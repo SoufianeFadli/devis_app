@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Devis SBBM</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <!-- Bandeau d’actions en haut -->
+  <div class="actions-top">
+    <a class="btn" href="/pdf/{{ ref_devis }}" target="_blank">Exporter PDF</a>
+    <a class="btn" href="/devis/form">Nouveau devis</a>
+  </div>
+
+  <div class="page">
+    <!-- Logo éventuel en haut de la page -->
+    <img src="static/logo_sbbm.jpg" alt="Logo SBBM" style="height:80px;">
+
+    <!-- ENTÊTE -->
+    <header class="header">
+      <div class="header-left">
+        <div class="societe">SOCIÉTÉ DE BÂTIMENTS ET BÉTON MOULÉ “SBBM”</div>
+        <div class="coord">
+          Lot 410 Sidi Ghanem Q.I Marrakech<br>
+          Tél : +212 5 24 33 54 48 &nbsp;&nbsp;•&nbsp;&nbsp; Email : sbbmdga@gmail.com
+        </div>
+      </div>
+    </header>
+
+    <!-- TITRE -->
+    <div class="title">
+      DEVIS {{ ref_devis }} - {{ client }} - {{ chantier }}
+    </div>
+
+    <!-- INFOS -->
+    <section class="top-grid">
+      <div class="card">
+        <div class="card-title">INFORMATIONS CLIENT</div>
+        <div class="grid2">
+          <div class="lbl">Code client :</div><div class="val">{{ code_client|default("") }}</div>
+          <div class="lbl">Client :</div><div class="val">{{ client }}</div>
+          <div class="lbl">Adresse chantier :</div><div class="val">{{ chantier }}</div>
+          <div class="lbl">Niveau :</div><div class="val">{{ niveau|default("") }}</div>
+          <div class="lbl">N° affaire :</div><div class="val">{{ affaire|default("") }}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">INFORMATIONS DEVIS</div>
+        <div class="grid2">
+          <div class="lbl">Date devis :</div><div class="val">{{ date_devis }}</div>
+          <div class="lbl">Réf devis :</div><div class="val">{{ ref_devis }}</div>
+          <div class="lbl">Mode livraison :</div><div class="val">{{ mode_livraison }}</div>
+          <div class="lbl">Distance (km) :</div><div class="val">{{ distance_km }}</div>
+          <div class="lbl">Validité :</div><div class="val">{{ validite }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TABLEAU -->
+    <section class="table-wrap">
+      <table class="devis">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Longueur</th>
+            <th>Étrier</th>
+            <th>Nombre</th>
+            <th>Prix ML / U</th>
+            <th>Prix</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lignes %}
+          <tr>
+            <td class="t">{{ l.type }}</td>
+            <td class="num">{{ l.longueur }}</td>
+            <td class="num">{{ l.etrier }}</td>
+            <td class="num">{{ l.nombre }}</td>
+            <td class="num">{{ l.prix_ml }}</td>
+            <td class="num">{{ l.prix }}</td>
+            <td class="num strong">{{ l.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Totaux à droite -->
+      <div class="totaux">
+        <div class="row"><div class="k">TOTAL HT</div><div class="v">{{ total_ht }}</div></div>
+        <div class="row"><div class="k">TVA 20%</div><div class="v">{{ tva }}</div></div>
+        <div class="row"><div class="k">TOTAL TTC</div><div class="v">{{ total_ttc }}</div></div>
+      </div>
+    </section>
+
+    <!-- CONDITIONS -->
+    <section class="conditions">
+      <div class="cond-title">CONDITIONS DU DEVIS</div>
+      <ol>
+        <li>Devis établi sur la base des plans de béton armé fournis par le client.</li>
+        <li>Toute modification ultérieure pourra donner lieu à un devis complémentaire.</li>
+        <li>Les prix indiqués sont en Dirhams H.T., TVA en sus.</li>
+        <li>Validité : {{ validite }}.</li>
+        <li>Le transport est calculé selon la distance usine-chantier.</li>
+      </ol>
+      {% if transport_commentaire %}
+      <p><strong>Transport :</strong> {{ transport_commentaire }}</p>
+      {% endif %}
+    </section>
+
+    <!-- VISA / CACHET -->
+    <section class="signature">
+      <div class="sig-box">
+        <div class="sig-title">Pour la Société de Bâtiments et Béton Moulé “SBBM”</div>
+        <div class="sig-grid">
+          <div class="sig-left">Visa et cachet SOCIÉTÉ</div>
+          <div class="sig-right"></div>
+        </div>
+      </div>
+      <div class="coord">
+        Commercial : {{ nom_commercial|default("") }} (Code : {{ code_commercial|default("") }})
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>
