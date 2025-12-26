@@ -124,7 +124,8 @@ LAST_SURFACE_TS: float = 0.0
 
 @app.get("/")
 def read_root():
-    return {"status": "OK - Devis App SBBM"}
+    # redirige vers le formulaire
+    return RedirectResponse(url="/devis/form")
 
 
 @app.get("/devis/form", response_class=HTMLResponse)
