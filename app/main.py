@@ -44,26 +44,16 @@ def get_pdf_path(ref_devis: str) -> Path:
 # === Compteur simple pour les références de devis ============================
 REF_COUNTER = 1  # redémarre à 1 à chaque lancement du serveur
 
-
-def get_next_ref_devis() -> str:
-    """
-    Génère une référence de devis auto-incrémentée.
-    Exemple : D00001, D00002, ...
-    """
-    global REF_COUNTER
-    ref = f"D{REF_COUNTER:05d}"
-    REF_COUNTER += 1
-    return ref
+# === SQLite : création table devis si nécessaire ==============================
 def init_db() -> None:
-    """Crée la table devis si elle n'existe pas."""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS devis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ref_devis TEXT,
-            date_devis TEXT,
+            ref_devis TEXT UNIQUE NOT NULL,
+            date_devis TEXT NOT NULL,
             client TEXT,
             chantier TEXT,
             code_client TEXT,
@@ -71,7 +61,7 @@ def init_db() -> None:
             nom_commercial TEXT,
             total_ht REAL,
             total_ttc REAL,
-            mode_saisie TEXT,
+            saisie_mode TEXT,
             mode_transport TEXT,
             transport_mode TEXT
         )
@@ -79,6 +69,106 @@ def init_db() -> None:
     )
     conn.commit()
     conn.close()
+
+init_db()
+
+def get_next_ref_devis() -> str:
+    """
+    Retourne la prochaine référence de devis au format D00001, D00002, ...
+    en se basant sur la dernière ligne de la table devis.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT ref_devis FROM devis ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or not row[0]:
+        return "D00001"
+
+    last = row[0]
+    # On suppose un format Dxxxxx
+    try:
+        num = int(last[1:])
+    except ValueError:
+        return "D00001"
+
+    return f"D{num + 1:05d}"
+
+
+def insert_devis_row(
+    ref_devis: str,
+    date_devis: str,
+    client: str,
+    chantier: str,
+    code_client: str,
+    code_commercial: str,
+    nom_commercial: str,
+    total_ht: float,
+    total_ttc: float,
+    saisie_mode: str,
+    mode_transport: str,
+    transport_mode: str,
+) -> None:
+    """Insère (ou remplace) un enregistrement dans la table devis."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT OR REPLACE INTO devis (
+            ref_devis, date_devis, client, chantier, code_client,
+            code_commercial, nom_commercial,
+            total_ht, total_ttc,
+            saisie_mode, mode_transport, transport_mode
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            ref_devis,
+            date_devis,
+            client,
+            chantier,
+            code_client,
+            code_commercial,
+            nom_commercial,
+            float(total_ht or 0.0),
+            float(total_ttc or 0.0),
+            saisie_mode,
+            mode_transport,
+            transport_mode,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def fetch_devis_list(limit: int = 200) -> List[Dict[str, Any]]:
+    """Retourne les derniers devis pour l'historique."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            id,
+            ref_devis,
+            date_devis,
+            client,
+            chantier,
+            total_ht,
+            total_ttc,
+            code_commercial,
+            nom_commercial
+        FROM devis
+        ORDER BY date_devis DESC, id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
 
 
 
@@ -122,10 +212,15 @@ LAST_SURFACE_TS: float = 0.0
 # === ROUTES ===================================================================
 
 
-@app.get("/")
-def read_root():
-    # redirige vers le formulaire
-    return RedirectResponse(url="/devis/form")
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    """Page d'accueil de l'application Devis SBBM."""
+    return templates.TemplateResponse(
+        "home.html",
+        {
+            "request": request,
+        },
+    )
 
 @app.get("/api/status")
 def api_status():
@@ -135,7 +230,6 @@ def api_status():
 def devis_form(request: Request):
     """Affiche le formulaire de saisie."""
     today_str = date.today().strftime("%d/%m/%Y")
-
     try:
         next_ref = get_next_ref_devis()
     except Exception as e:
@@ -148,7 +242,7 @@ def devis_form(request: Request):
             "request": request,
             "today": today_str,
             "liste_commerciaux": COMMERCIAUX,
-            "next_ref_devis": next_ref,  # envoyé au template
+            "next_ref_devis": next_ref,
         },
     )
 
@@ -322,6 +416,29 @@ async def generate_devis(
 
     nom_commercial = COMMERCIAUX.get(code_commercial.upper(), "")
 
+        # === 4) SAUVEGARDE EN BASE SQLITE ========================================
+    date_devis_finale = date_devis or date.today().strftime("%d/%m/%Y")
+    code_commercial_up = (code_commercial or "GA").upper()
+    nom_commercial = COMMERCIAUX.get(code_commercial_up, "")
+
+    try:
+        insert_devis_row(
+            ref_devis=ref_devis,
+            date_devis=date_devis_finale,
+            client=client,
+            chantier=chantier,
+            code_client=code_client,
+            code_commercial=code_commercial_up,
+            nom_commercial=nom_commercial,
+            total_ht=data_calc.get("total_ht", 0.0),
+            total_ttc=data_calc.get("total_ttc", 0.0),
+            saisie_mode=saisie_mode,
+            mode_transport=mode_transport,
+            transport_mode=transport_mode,
+        )
+    except Exception as e:
+        print("⚠️ Erreur insert_devis_row:", e)
+
     # === 4) CONTEXTE TEMPLATE =================================================
     context: Dict[str, Any] = {
         "request": request,
@@ -419,3 +536,15 @@ async def simulate_transport_endpoint(
         transport_prix_hourdis_manuel,
     )
     return JSONResponse(info)
+
+@app.get("/devis/historique", response_class=HTMLResponse)
+def devis_historique(request: Request):
+    """Affiche la liste des devis enregistrés en base."""
+    devis_list = fetch_devis_list(limit=200)
+    return templates.TemplateResponse(
+        "devis_historique.html",
+        {
+            "request": request,
+            "devis_list": devis_list,
+        },
+    )
