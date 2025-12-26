@@ -68,7 +68,7 @@
             <input class="inp" name="date_devis" value="{{ today }}" />
 
             <label class="lbl">Réf devis *</label>
-            <input class="inp" name="ref_devis" required value="{{ next_ref_devis or '' }}" placeholder="Référence auto" readonly/>
+            <input class="inp" ype="text" name="ref_devis" required value="{{ next_ref_devis or '' }}" readonly/>
             <label class="lbl">Mode livraison</label>
             <select class="inp" name="mode_livraison">
               <option value="SOLO">SOLO</option>
@@ -254,6 +254,9 @@
       <div style="display:flex; gap:10px; margin-top:14px;">
         <button class="btn" type="submit">Générer le devis</button>
         <a class="btn btn-secondary" href="/devis/form">Réinitialiser</a>
+      </div>
+      <div class="actions-top" style="margin-bottom:10px;">
+        <a class="btn" href="/devis/historique">Historique des devis</a>
       </div>
     </form>
   </div>

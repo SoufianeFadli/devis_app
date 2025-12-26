@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Historique des devis - SBBM</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+
+    <header class="header">
+      <div class="header-left">
+        <div class="societe">SOCIÉTÉ DE BÂTIMENTS ET BÉTON MOULÉ “SBBM”</div>
+        <div class="coord">
+          Lot 410 Sidi Ghanem Q.I Marrakech<br>
+          Tél : +212 5 24 33 54 48 • Email : sbbmdga@gmail.com
+        </div>
+      </div>
+    </header>
+
+    <div class="title">
+      Historique des devis
+    </div>
+
+    <div class="actions-top" style="margin-bottom:10px;">
+      <a class="btn" href="/devis/form">+ Nouveau devis</a>
+    </div>
+
+    <table class="devis">
+      <thead>
+        <tr>
+          <th>Réf</th>
+          <th>Date</th>
+          <th>Client</th>
+          <th>Chantier</th>
+          <th>Total HT</th>
+          <th>Total TTC</th>
+          <th>Commercial</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in devis_list %}
+        <tr>
+          <td>{{ d.ref_devis }}</td>
+          <td>{{ d.date_devis }}</td>
+          <td>{{ d.client }}</td>
+          <td>{{ d.chantier }}</td>
+          <td class="num">{{ "%.2f"|format(d.total_ht or 0) }}</td>
+          <td class="num">{{ "%.2f"|format(d.total_ttc or 0) }}</td>
+          <td>{{ d.nom_commercial }} ({{ d.code_commercial }})</td>
+          <td>
+            <a class="btn btn-small" href="/pdf/{{ d.ref_devis }}" target="_blank">PDF</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center;">Aucun devis enregistré pour le moment.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </div>
+</body>
+</html>
