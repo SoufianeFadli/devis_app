@@ -8,7 +8,7 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
@@ -127,6 +127,9 @@ def read_root():
     # redirige vers le formulaire
     return RedirectResponse(url="/devis/form")
 
+@app.get("/api/status")
+def api_status():
+    return {"status": "OK - Application Devis SBBM"}
 
 @app.get("/devis/form", response_class=HTMLResponse)
 def devis_form(request: Request):
