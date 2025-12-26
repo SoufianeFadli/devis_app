@@ -3,7 +3,18 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <!-- Couleur du thème (barre du haut sur Android) -->
+  <meta name="theme-color" content="#111827">
+  <!-- Couleur du thème (barre du haut sur Android) -->
+  <meta name="theme-color" content="#111827">
+  <!-- PWA : Manifest -->
+  <link rel="manifest" href="/static/manifest.webmanifest">
   <title>Devis SBBM - Formulaire</title>
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <!-- iOS mode plein écran -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Devis SBBM">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="icon" href="/static/favicon.ico">
   <style>
@@ -456,6 +467,20 @@
       // init
       refreshTransportUI();
     })();
+  </script>
+  <script>
+    // Enregistrement du service worker pour la PWA
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/service-worker.js")
+          .then((reg) => {
+            console.log("ServiceWorker enregistré avec succès", reg.scope);
+          })
+          .catch((err) => {
+            console.log("Erreur ServiceWorker :", err);
+          });
+      });
+    }
   </script>
 </body>
 </html>

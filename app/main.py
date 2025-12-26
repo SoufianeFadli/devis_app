@@ -214,17 +214,10 @@ LAST_SURFACE_TS: float = 0.0
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    """Page d'accueil de l'application Devis SBBM."""
     return templates.TemplateResponse(
         "home.html",
-        {
-            "request": request,
-        },
+        {"request": request},
     )
-
-@app.get("/api/status")
-def api_status():
-    return {"status": "OK - Application Devis SBBM"}
 
 @app.get("/devis/form", response_class=HTMLResponse)
 def devis_form(request: Request):

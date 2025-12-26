@@ -1,0 +1,22 @@
+{
+    "name": "Devis SBBM",
+    "short_name": "Devis SBBM",
+    "start_url": "/devis/form",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#111827",
+    "theme_color": "#111827",
+    "icons": [
+      {
+        "src": "/static/icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "/static/icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
