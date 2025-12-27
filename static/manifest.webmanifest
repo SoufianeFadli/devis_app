@@ -1,7 +1,7 @@
 {
     "name": "Devis SBBM",
     "short_name": "Devis SBBM",
-    "start_url": "/devis/form",
+    "start_url": "/?source=pwa",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait",
