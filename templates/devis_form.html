@@ -317,48 +317,67 @@
       refreshModeSaisie();
     })();
   
-    // --- Ajout dynamique des lignes de poutrelles ---
-    (function () {
-      const tbody = document.getElementById("tbody_poutrelles");
-      const btnAdd = document.getElementById("btn_add_poutrelle");
+    // --- Ajout dynamique des lignes de poutrelles (avec liste déroulante) ---
+(function () {
+  const tbody = document.getElementById("tbody_poutrelles");
+  const btnAdd = document.getElementById("btn_add_poutrelle");
+
+  function addRowPoutrelle() {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <select class="inp" name="manual_pout_type">
+          <option value="">-- Type --</option>
+          <option value="113">113</option>
+          <option value="114">114</option>
+          <option value="115">115</option>
+          <option value="135">135</option>
+          <option value="157">157</option>
+        </select>
+      </td>
+      <td><input class="inp" name="manual_pout_longueur" type="number" step="0.01" value="0"></td>
+      <td><input class="inp" name="manual_pout_etrier" type="number" step="1" value="0"></td>
+      <td><input class="inp" name="manual_pout_nombre" type="number" step="1" value="0"></td>
+      <td><button type="button" class="btn btn-small btn-danger">X</button></td>
+    `;
+    tr.querySelector("button").addEventListener("click", () => tr.remove());
+    tbody.appendChild(tr);
+  }
+
+  btnAdd.addEventListener("click", addRowPoutrelle);
+  // au moins une ligne vide au départ
+  addRowPoutrelle();
+})();
   
-      function addRowPoutrelle() {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><input class="inp" name="manual_pout_type" placeholder="113, 114, 115, 135, 157"></td>
-          <td><input class="inp" name="manual_pout_longueur" type="number" step="0.01" value="0"></td>
-          <td><input class="inp" name="manual_pout_etrier" type="number" step="1" value="0"></td>
-          <td><input class="inp" name="manual_pout_nombre" type="number" step="1" value="0"></td>
-          <td><button type="button" class="btn btn-small btn-danger">X</button></td>
-        `;
-        tr.querySelector("button").addEventListener("click", () => tr.remove());
-        tbody.appendChild(tr);
-      }
-  
-      btnAdd.addEventListener("click", addRowPoutrelle);
-      // au moins une ligne vide au départ
-      addRowPoutrelle();
-    })();
-  
-    // --- Ajout dynamique des lignes d'hourdis ---
-    (function () {
-      const tbody = document.getElementById("tbody_hourdis");
-      const btnAdd = document.getElementById("btn_add_hourdis");
-  
-      function addRowHourdis() {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><input class="inp" name="manual_hourdis_type" placeholder="H8, H12, H16, H20, H25, H30"></td>
-          <td><input class="inp" name="manual_hourdis_nombre" type="number" step="1" value="0"></td>
-          <td><button type="button" class="btn btn-small btn-danger">X</button></td>
-        `;
-        tr.querySelector("button").addEventListener("click", () => tr.remove());
-        tbody.appendChild(tr);
-      }
-  
-      btnAdd.addEventListener("click", addRowHourdis);
-      addRowHourdis();
-    })();
+    // --- Ajout dynamique des lignes d'hourdis (avec liste déroulante) ---
+(function () {
+  const tbody = document.getElementById("tbody_hourdis");
+  const btnAdd = document.getElementById("btn_add_hourdis");
+
+  function addRowHourdis() {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <select class="inp" name="manual_hourdis_type">
+          <option value="">-- Type hourdis --</option>
+          <option value="H8">H8</option>
+          <option value="H12">H12</option>
+          <option value="H16">H16</option>
+          <option value="H20">H20</option>
+          <option value="H25">H25</option>
+          <option value="H30">H30</option>
+        </select>
+      </td>
+      <td><input class="inp" name="manual_hourdis_nombre" type="number" step="1" value="0"></td>
+      <td><button type="button" class="btn btn-small btn-danger">X</button></td>
+    `;
+    tr.querySelector("button").addEventListener("click", () => tr.remove());
+    tbody.appendChild(tr);
+  }
+
+  btnAdd.addEventListener("click", addRowHourdis);
+  addRowHourdis();
+})();
   
     // --- Afficher / masquer les zones de transport + simulation auto ---
     (function () {
