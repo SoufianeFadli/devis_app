@@ -243,8 +243,8 @@ def compute_devis(
                 "longueur": round(longueur, 2),
                 "etrier": int(etrier) if etrier else "",
                 "nombre": int(nb),
-                "prix_ml": round(prix_ml, 4),
-                "prix": round(prix, 4),
+                "prix_ml": round(prix_ml, 2),
+                "prix": round(prix, 2),
                 "total": round(total, 2),
             }
         )
@@ -262,9 +262,9 @@ def compute_devis(
         lignes.append(
             {
                 "type": "ETRIERS",
-                "longueur": int(qte_e),
-                "etrier": 0,
-                "nombre": 0,
+                "longueur": "",
+                "etrier": "",
+                "nombre": int(qte_e),
                 "prix_ml": round(prix_etrier, 4),
                 "prix": round(prix_etrier, 4),
                 "total": round(total_e, 2),
@@ -289,11 +289,11 @@ def compute_devis(
         lignes.append(
             {
                 "type": t,
-                "longueur": int(qte),  # On affiche la qté dans la colonne "Longueur"
+                "longueur": "",  
                 "etrier": "",
-                "nombre": 0,
-                "prix_ml": round(prix_u, 4),
-                "prix": round(prix_u, 4),
+                "nombre": int(qte),
+                "prix_ml": round(prix_u, 2),
+                "prix": round(prix_u, 2),
                 "total": round(total, 2),
             }
         )
@@ -306,11 +306,11 @@ def compute_devis(
         lignes.append(
             {
                 "type": "CONTROLE TECHNIQUE",
-                "longueur": round(surface_ct, 2),
-                "etrier": 0,
-                "nombre": 0,
-                "prix_ml": round(prix_ct, 4),
-                "prix": round(prix_ct, 4),
+                "longueur": "",
+                "etrier": "",
+                "nombre": round(surface_ct, 2),
+                "prix_ml": round(prix_ct, 2),
+                "prix": round(prix_ct, 2),
                 "total": round(total_ct, 2),
             }
         )
@@ -324,11 +324,11 @@ def compute_devis(
         lignes.append(
             {
                 "type": "TREILLES SOUDEES",
-                "longueur": int(nb_ts),
-                "etrier": 0,
-                "nombre": 0,
-                "prix_ml": round(prix_treillis, 4),
-                "prix": round(prix_treillis, 4),
+                "longueur": "",
+                "etrier": "",
+                "nombre": int(nb_ts),
+                "prix_ml": round(prix_treillis, 2),
+                "prix": round(prix_treillis, 2),
                 "total": round(total_tr, 2),
             }
         )

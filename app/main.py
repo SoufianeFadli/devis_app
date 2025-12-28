@@ -5,6 +5,7 @@ from datetime import date
 from io import BytesIO
 import shutil
 import tempfile
+import base64 
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException
@@ -21,6 +22,19 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 PDF_DIR = BASE_DIR / "generated_pdfs"
 PDF_DIR.mkdir(exist_ok=True)
+# === Logo en base64 pour HTML & PDF ==========================================
+STATIC_DIR = BASE_DIR / "static"
+LOGO_DATA_URI = ""
+
+try:
+    logo_path = STATIC_DIR / "logo_sbbm.jpg"
+    with open(logo_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("ascii")
+        LOGO_DATA_URI = f"data:image/jpeg;base64,{encoded}"
+    print("Logo SBBM chargé en base64 pour PDF.")
+except Exception as e:
+    print("⚠️ Impossible de charger le logo SBBM :", e)
+          
 # === WeasyPrint optionnel =====================================================
 try:
     from weasyprint import HTML, CSS  # type: ignore
@@ -236,6 +250,7 @@ def devis_form(request: Request):
             "today": today_str,
             "liste_commerciaux": COMMERCIAUX,
             "next_ref_devis": next_ref,
+            "logo_data_uri": LOGO_DATA_URI,
         },
     )
 
@@ -457,6 +472,7 @@ async def generate_devis(
         "prix_treillis": prix_treillis,
         "saisie_mode": saisie_mode,
         "saisie_mode": saisie_mode,
+        "logo_data_uri": LOGO_DATA_URI,
         "pdf_available": WEASYPRINT_OK and HTML is not None,
         **data_calc,
     }
