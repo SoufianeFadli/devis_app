@@ -16,6 +16,7 @@ from pathlib import Path
 from app.services.parser_progiciel import parse_progiciel_csv
 from app.services.engine import compute_devis, simulate_transport
 from pydantic import BaseModel
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "devis.db"
@@ -23,7 +24,12 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 PDF_DIR = BASE_DIR / "generated_pdfs"
 PDF_DIR.mkdir(exist_ok=True)
-
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+templates = Environment(
+    loader=FileSystemLoader(str(TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html", "xml"])
+)
 # === Base SQLite clients ======================================================
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -74,15 +80,19 @@ def get_pdf_path(ref_devis: str) -> Path:
 REF_COUNTER = 1  # redémarre à 1 à chaque lancement du serveur
 
 # === SQLite : création table devis si nécessaire ==============================
-def init_db() -> None:
+def init_db():
+    """Crée les tables nécessaires et importe les clients depuis le CSV si besoin."""
+    # 1) Création des tables
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
+
+    # Table devis (adapte les colonnes si tu as déjà une définition différente)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS devis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ref_devis TEXT UNIQUE NOT NULL,
-            date_devis TEXT NOT NULL,
+            date_devis TEXT,
             client TEXT,
             chantier TEXT,
             code_client TEXT,
@@ -90,13 +100,61 @@ def init_db() -> None:
             nom_commercial TEXT,
             total_ht REAL,
             total_ttc REAL,
-            saisie_mode TEXT,
+            mode_saisie TEXT,
             mode_transport TEXT,
             transport_mode TEXT
         )
         """
     )
+
+    # Table clients
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code_client TEXT UNIQUE NOT NULL,
+            nom_client TEXT NOT NULL
+        )
+        """
+    )
+
     conn.commit()
+
+    # 2) Import CSV si la table clients est vide
+    try:
+        cur.execute("SELECT COUNT(*) FROM clients")
+        nb = cur.fetchone()[0]
+    except Exception as e:
+        print("⚠️ Erreur lecture nombre de clients :", e)
+        nb = 0
+
+    if nb == 0 and CLIENTS_CSV.exists():
+        print(f"Import clients depuis : {CLIENTS_CSV}")
+        try:
+            rows_to_insert = []
+            with CLIENTS_CSV.open("r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f, delimiter=";")
+                for row in reader:
+                    code = (row.get("CODE_CLIENT") or "").strip()
+                    nom = (row.get("NOM_CLIENT") or "").strip()
+                    if not code or not nom:
+                        continue
+                    rows_to_insert.append((code, nom))
+
+            with conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO clients (code_client, nom_client) VALUES (?, ?)",
+                    rows_to_insert,
+                )
+
+            print(
+                f"Import terminé. {len(rows_to_insert)} lignes insérées (INSERT OR IGNORE)."
+            )
+        except Exception as e:
+            print("⚠️ Erreur import clients CSV :", e)
+    else:
+        print(f"Table clients déjà remplie ({nb} lignes). Pas d'import CSV.")
+
     conn.close()
 
 init_db()
@@ -219,7 +277,7 @@ except Exception as e:  # ImportError + libs natives manquantes
 app = FastAPI()
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.post("/clients/new")
 async def create_client(
     code_client: str = Form(...),
