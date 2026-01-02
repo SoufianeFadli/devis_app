@@ -7,7 +7,8 @@ from pathlib import Path
 # Dossiers / chemins
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "devis.db"
-CSV_PATH = BASE_DIR / "data" / "liste_client_sbbm.csv"
+DATA_DIR = BASE_DIR / "data"
+CLIENTS_CSV = DATA_DIR / "liste_client_sbbm.csv"
 
 
 def ensure_table_clients(conn: sqlite3.Connection) -> None:
