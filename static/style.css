@@ -687,3 +687,86 @@ table.devis td.strong {
   size: A4;
   margin: 10mm 10mm 15mm 10mm;
 }
+/* Liste résultats recherche client */
+.client-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  margin-top: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  z-index: 40;
+  width: 100%;
+  font-size: 12px;
+  overflow-y: auto;
+}
+
+.client-result-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  cursor: pointer;
+  gap: 6px;
+  align-items: center;
+}
+
+.client-result-item:hover {
+  background: #eff6ff;
+}
+
+.client-result-code {
+  font-weight: 600;
+  color: #111827;
+  min-width: 90px;
+}
+
+.client-result-name {
+  color: #4b5563;
+  flex: 1;
+  font-size: 11px;
+}
+/* Modal Nouveau client */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  width: min(420px, 90vw);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+  border: 1px solid #e5e7eb;
+}
+
+.modal-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.modal-status {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}

@@ -8,13 +8,14 @@ import tempfile
 import base64 
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException,Query
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from app.services.parser_progiciel import parse_progiciel_csv
 from app.services.engine import compute_devis, simulate_transport
+from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "devis.db"
@@ -22,6 +23,20 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 PDF_DIR = BASE_DIR / "generated_pdfs"
 PDF_DIR.mkdir(exist_ok=True)
+
+# === Base SQLite clients ======================================================
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+class ClientCreate(BaseModel):
+    code_client: str
+    nom_client: str
+
+
+
 # === Logo en base64 pour HTML & PDF ==========================================
 STATIC_DIR = BASE_DIR / "static"
 LOGO_DATA_URI = ""
@@ -205,7 +220,43 @@ app = FastAPI()
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+@app.post("/clients/new")
+async def create_client(
+    code_client: str = Form(...),
+    nom_client: str = Form(...),
+):
+    """
+    Ajoute un nouveau client dans la table 'clients'.
+    """
+    code_client = code_client.strip()
+    nom_client = nom_client.strip()
 
+    if not code_client or not nom_client:
+        raise HTTPException(status_code=400, detail="Code et nom obligatoires")
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        # on garde le code_client unique
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO clients (code_client, nom_client)
+            VALUES (?, ?)
+            """,
+            (code_client, nom_client),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Réponse simple pour le JS
+    return JSONResponse(
+        {
+            "status": "ok",
+            "code_client": code_client,
+            "nom_client": nom_client,
+        }
+    )
 # === Données commerciales =====================================================
 
 COMMERCIAUX: Dict[str, str] = {
@@ -557,3 +608,98 @@ def devis_historique(request: Request):
             "devis_list": devis_list,
         },
     )
+@app.get("/api/clients")
+def api_search_clients(q: str = Query("", min_length=0, description="Code ou nom client")):
+    """
+    Recherche de clients pour l'auto-complétion.
+    - q : texte saisi (code ou nom)
+    Retourne une liste de dicts : {code_client, nom_client}
+    """
+    term = (q or "").strip()
+    results = []
+
+    # Si rien saisi, on peut soit renvoyer vide, soit quelques clients au hasard
+    if not term:
+        return JSONResponse(results)
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        # Recherche sur code_client OU nom_client (insensible à la casse)
+        cur.execute(
+            """
+            SELECT code_client, nom_client
+            FROM clients
+            WHERE code_client LIKE ? OR nom_client LIKE ?
+            ORDER BY nom_client
+            LIMIT 20
+            """,
+            (f"%{term}%", f"%{term}%"),
+        )
+        rows = cur.fetchall()
+        conn.close()
+
+        for code_client, nom_client in rows:
+            results.append(
+                {
+                    "code_client": code_client.strip() if code_client else "",
+                    "nom_client": nom_client.strip() if nom_client else "",
+                }
+            )
+    except Exception as e:
+        print("⚠️ Erreur api_search_clients:", e)
+
+    return JSONResponse(results)
+@app.post("/api/clients")
+async def api_create_client(payload: dict = Body(...)):
+    """
+    Création rapide d'un client depuis le formulaire (+ Nouveau client).
+    - Si le code_client n'existe pas encore => insertion.
+    - Si le code_client existe déjà      => on retourne l'existant (status = "exists").
+    """
+    code = (payload.get("code_client") or "").strip()
+    nom = (payload.get("nom_client") or "").strip()
+
+    if not code or not nom:
+        return JSONResponse(
+            {"detail": "Code client et nom client sont obligatoires."},
+            status_code=400,
+        )
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        with conn:
+            cur = conn.execute(
+                "INSERT INTO clients (code_client, nom_client) VALUES (?, ?)",
+                (code, nom),
+            )
+        client_id = cur.lastrowid
+        status = "created"
+    except sqlite3.IntegrityError:
+        # Le code client existe déjà, on récupère la ligne
+        cur = conn.execute(
+            "SELECT id, code_client, nom_client FROM clients WHERE code_client = ?",
+            (code,),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return JSONResponse(
+                {"detail": "Erreur interne lors de la récupération du client."},
+                status_code=500,
+            )
+        client_id = row["id"]
+        code = row["code_client"]
+        nom = row["nom_client"]
+        status = "exists"
+    finally:
+        conn.close()
+
+    return {
+        "status": status,          # "created" ou "exists"
+        "id": client_id,
+        "code_client": code,
+        "nom_client": nom,
+    }
