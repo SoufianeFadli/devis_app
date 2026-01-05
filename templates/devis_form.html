@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <!-- Couleur du thème -->
+
+  <!-- Couleur du thème (PWA) -->
   <meta name="theme-color" content="#111827">
 
   <!-- PWA -->
@@ -34,6 +35,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 6px 10px;
     }
+
     .table-like {
       width: 100%;
       border-collapse: collapse;
@@ -45,9 +47,57 @@
       padding: 4px;
       font-size: 12px;
     }
+
     .btn-small { font-size: 12px; padding: 3px 8px; margin-top: 4px; }
     .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
     .hint { font-size: 11px; color: #555; }
+
+    /* ---------- Auto-complétion clients ---------- */
+    .client-search-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .client-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-top: 2px;
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+      font-size: 12px;
+    }
+
+    .client-result-item {
+      padding: 4px 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .client-result-item:hover {
+      background: #e5f3ff;
+    }
+
+    .client-result-code {
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .client-result-name {
+      color: #4b5563;
+      flex: 1;
+      text-align: right;
+    }
 
     /* ---------- MODAL NOUVEAU CLIENT ---------- */
     .modal-overlay {
@@ -113,34 +163,33 @@
         <div class="card">
           <div class="card-title">INFORMATIONS CLIENT</div>
           <div class="grid2">
+
+            <!-- Code client affiché (lecture seule) -->
             <div class="lbl">Code client :</div>
             <div>
-              <input class="inp" type="text" name="code_client" id="code_client" value="{{ code_client or '' }}">
+              <input class="inp" type="text" id="code_client_display" readonly>
             </div>
 
+            <!-- Recherche client (code ou nom) -->
             <div class="lbl">Client :</div>
-<div style="position:relative; display:flex; flex-direction:column; gap:4px;">
+            <div class="client-search-wrapper">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input class="inp"
+                       type="text"
+                       id="client_search"
+                       autocomplete="off"
+                       placeholder="Tapez un code ou un nom de client...">
 
-  <div style="display:flex; align-items:center; gap:8px;">
-    <!-- Champ de recherche : code OU nom -->
-    <input class="inp"
-           type="text"
-           id="client_search"
-           autocomplete="off"
-           placeholder="Tapez un code ou un nom de client...">
+                <button type="button" class="btn btn-small" id="btn_new_client">
+                  + Nouveau client
+                </button>
+              </div>
+              <div id="client_results" class="client-results hidden"></div>
+            </div>
 
-    <button type="button" class="btn btn-small" id="btn_new_client">
-      + Nouveau client
-    </button>
-  </div>
-
-  <!-- Liste de résultats auto-complétion -->
-  <div id="client_results" class="client-results hidden"></div>
-</div>
-
-<!-- Champs réels envoyés au backend -->
-<input type="hidden" name="code_client" id="code_client" value="{{ code_client or '' }}">
-<input type="hidden" name="client" id="client_nom" value="{{ client or '' }}">
+            <!-- Champs réels envoyés au backend -->
+            <input type="hidden" name="code_client" id="code_client_hidden" value="{{ code_client or '' }}">
+            <input type="hidden" name="client" id="client_hidden" value="{{ client or '' }}">
 
             <div class="lbl">Adresse chantier :</div>
             <div>
@@ -249,10 +298,11 @@
                   <th></th>
                 </tr>
               </thead>
-              <tbody id="tbody_poutrelles">
-              </tbody>
+              <tbody id="tbody_poutrelles"></tbody>
             </table>
-            <button type="button" class="btn btn-small" id="btn_add_poutrelle">+ Ajouter poutrelle</button>
+            <button type="button" class="btn btn-small" id="btn_add_poutrelle">
+              + Ajouter poutrelle
+            </button>
           </div>
 
           <!-- HOURDIS -->
@@ -266,10 +316,11 @@
                   <th></th>
                 </tr>
               </thead>
-              <tbody id="tbody_hourdis">
-              </tbody>
+              <tbody id="tbody_hourdis"></tbody>
             </table>
-            <button type="button" class="btn btn-small" id="btn_add_hourdis">+ Ajouter hourdis</button>
+            <button type="button" class="btn btn-small" id="btn_add_hourdis">
+              + Ajouter hourdis
+            </button>
           </div>
 
           <!-- CT & TREILLIS -->
@@ -357,7 +408,7 @@
     </form>
   </div>
 
-  <!-- ========== MODAL NOUVEAU CLIENT (UNE SEULE VERSION) ========== -->
+  <!-- ========== MODAL NOUVEAU CLIENT ========== -->
   <div id="modal_new_client" class="modal-overlay hidden">
     <div class="modal-card">
       <h3>Nouveau client</h3>
@@ -606,15 +657,17 @@
 
     // --- Modal "+ Nouveau client" (POST /api/clients) ---
     (function () {
-      const btnOpen      = document.getElementById("btn_new_client");
-      const modal        = document.getElementById("modal_new_client");
-      const form         = document.getElementById("form_new_client");
-      const btnCancel    = document.getElementById("btn_cancel_new_client");
-      const inputMainCode= document.getElementById("code_client");
-      const inputMainNom = document.getElementById("client");
-      const inputCode    = document.getElementById("new_client_code");
-      const inputNom     = document.getElementById("new_client_nom");
-      const statusSpan   = document.getElementById("new_client_status");
+      const btnOpen       = document.getElementById("btn_new_client");
+      const modal         = document.getElementById("modal_new_client");
+      const form          = document.getElementById("form_new_client");
+      const btnCancel     = document.getElementById("btn_cancel_new_client");
+      const inputMainCode = document.getElementById("code_client_hidden");
+      const inputMainNom  = document.getElementById("client_hidden");
+      const searchInput   = document.getElementById("client_search");
+      const inputCode     = document.getElementById("new_client_code");
+      const inputNom      = document.getElementById("new_client_nom");
+      const statusSpan    = document.getElementById("new_client_status");
+      const codeDisplay   = document.getElementById("code_client_display");
 
       function openModal() {
         inputCode.value = (inputMainCode.value || "").trim();
@@ -665,8 +718,14 @@
           }
 
           const data = await resp.json();
-          inputMainCode.value = data.code_client || code;
-          inputMainNom.value  = data.nom_client || nom;
+          const finalCode = data.code_client || code;
+          const finalNom  = data.nom_client  || nom;
+
+          // Remplir champs cachés + affichage
+          inputMainCode.value = finalCode;
+          inputMainNom.value  = finalNom;
+          codeDisplay.value   = finalCode;
+          searchInput.value   = finalCode + " - " + finalNom;
 
           if (data.status === "exists") {
             statusSpan.textContent = "Client déjà existant, champs remplis automatiquement.";
@@ -681,124 +740,131 @@
         }
       });
     })();
-    
-  // --- Auto-complétion clients (code + nom) ---
-  (function () {
-    const searchInput = document.getElementById("client_search");   // champ visible
-    const resultsBox  = document.getElementById("client_results");  // liste résultats
-    const codeInput   = document.getElementById("code_client");     // hidden pour backend
-    const nomInput    = document.getElementById("client_nom");      // hidden pour backend
 
-    if (!searchInput || !resultsBox || !codeInput || !nomInput) {
-      return; // sécurité
-    }
+    // --- Auto-complétion clients (GET /api/clients?q=...) ---
+    (function () {
+      const searchInput   = document.getElementById("client_search");    // champ visible
+      const resultsBox    = document.getElementById("client_results");   // liste résultats
+      const codeInput     = document.getElementById("code_client_hidden");
+      const nomInput      = document.getElementById("client_hidden");
+      const codeDisplay   = document.getElementById("code_client_display");
 
-    let lastQuery = "";
-    let timerId = null;
-
-    function clearResults() {
-      resultsBox.innerHTML = "";
-      resultsBox.classList.add("hidden");
-    }
-
-    function fillClient(code, nom) {
-      codeInput.value = code || "";
-      nomInput.value  = nom || "";
-
-      // Ce qu’on affiche dans la case de recherche
-      if (code && nom) {
-        searchInput.value = code + " - " + nom;
-      } else if (nom) {
-        searchInput.value = nom;
-      } else {
-        searchInput.value = code || "";
-      }
-
-      clearResults();
-    }
-
-    function renderResults(list) {
-      if (!list || list.length === 0) {
-        clearResults();
+      if (!searchInput || !resultsBox || !codeInput || !nomInput) {
         return;
       }
-      const itemsHtml = list.map(c => {
-        const code = c.code_client || "";
-        const nom  = c.nom_client || "";
-        return `
-          <div class="client-result-item"
-               data-code="${code.replace(/"/g, '&quot;')}"
-               data-nom="${nom.replace(/"/g, '&quot;')}">
-            <span class="client-result-code">${code}</span>
-            <span class="client-result-name">${nom}</span>
-          </div>
-        `;
-      }).join("");
 
-      resultsBox.innerHTML = itemsHtml;
-      resultsBox.classList.remove("hidden");
+      // Initialisation à partir des valeurs backend (si déjà connues)
+      (function initFromBackend() {
+        const code = codeInput.value.trim();
+        const nom  = nomInput.value.trim();
+        if (code) codeDisplay.value = code;
+        if (code && nom) {
+          searchInput.value = code + " - " + nom;
+        } else if (nom) {
+          searchInput.value = nom;
+        }
+      })();
 
-      // Clic sur un résultat = remplissage des champs
-      resultsBox.querySelectorAll(".client-result-item").forEach(el => {
-        el.addEventListener("click", () => {
-          const code = el.getAttribute("data-code") || "";
-          const nom  = el.getAttribute("data-nom") || "";
-          fillClient(code, nom);
-        });
-      });
-    }
+      let lastQuery = "";
+      let timerId = null;
 
-    async function fetchClients(q) {
-      if (!q || q.length < 2) {   // on commence à 2 caractères
-        clearResults();
-        return;
+      function clearResults() {
+        resultsBox.innerHTML = "";
+        resultsBox.classList.add("hidden");
       }
-      lastQuery = q;
 
-      try {
-        const resp = await fetch(`/api/clients?q=${encodeURIComponent(q)}`);
-        if (!resp.ok) {
+      function fillClient(code, nom) {
+        codeInput.value = code || "";
+        nomInput.value  = nom || "";
+        codeDisplay.value = code || "";
+
+        if (code && nom) {
+          searchInput.value = code + " - " + nom;
+        } else if (nom) {
+          searchInput.value = nom;
+        } else {
+          searchInput.value = code || "";
+        }
+
+        clearResults();
+      }
+
+      function renderResults(list) {
+        if (!list || list.length === 0) {
           clearResults();
           return;
         }
-        const data = await resp.json();
-        if (searchInput.value.trim() === lastQuery) {
-          renderResults(data);
+        const itemsHtml = list.map(c => {
+          const code = c.code_client || "";
+          const nom  = c.nom_client || "";
+          return `
+            <div class="client-result-item"
+                 data-code="${code.replace(/"/g, '&quot;')}"
+                 data-nom="${nom.replace(/"/g, '&quot;')}">
+              <span class="client-result-code">${code}</span>
+              <span class="client-result-name">${nom}</span>
+            </div>
+          `;
+        }).join("");
+
+        resultsBox.innerHTML = itemsHtml;
+        resultsBox.classList.remove("hidden");
+
+        resultsBox.querySelectorAll(".client-result-item").forEach(el => {
+          el.addEventListener("click", () => {
+            const code = el.getAttribute("data-code") || "";
+            const nom  = el.getAttribute("data-nom") || "";
+            fillClient(code, nom);
+          });
+        });
+      }
+
+      async function fetchClients(q) {
+        if (!q || q.length < 2) {
+          clearResults();
+          return;
         }
-      } catch (e) {
-        console.error("Erreur fetch /api/clients :", e);
-        clearResults();
-      }
-    }
+        lastQuery = q;
 
-    // Recherche au fur et à mesure
-    searchInput.addEventListener("input", () => {
-      const val = searchInput.value.trim();
-      if (timerId) {
-        clearTimeout(timerId);
+        try {
+          const resp = await fetch(`/api/clients?q=${encodeURIComponent(q)}`);
+          if (!resp.ok) {
+            clearResults();
+            return;
+          }
+          const data = await resp.json();
+          if (searchInput.value.trim() === lastQuery) {
+            renderResults(data);
+          }
+        } catch (e) {
+          console.error("Erreur fetch /api/clients :", e);
+          clearResults();
+        }
       }
-      timerId = setTimeout(() => fetchClients(val), 200);
-    });
 
-    // Si l’utilisateur envoie le formulaire sans avoir cliqué sur un résultat,
-    // on prend ce qu’il a tapé comme nom du client.
-    const form = searchInput.closest("form");
-    if (form) {
-      form.addEventListener("submit", () => {
-        if (!nomInput.value && searchInput.value.trim()) {
-          nomInput.value = searchInput.value.trim();
+      searchInput.addEventListener("input", () => {
+        const val = searchInput.value.trim();
+        if (timerId) clearTimeout(timerId);
+        timerId = setTimeout(() => fetchClients(val), 200);
+      });
+
+      // Si on envoie le formulaire sans avoir choisi un client dans la liste,
+      // on prend ce qu'il a tapé comme nom client (code_client restera vide).
+      const form = searchInput.closest("form");
+      if (form) {
+        form.addEventListener("submit", () => {
+          if (!nomInput.value && searchInput.value.trim()) {
+            nomInput.value = searchInput.value.trim();
+          }
+        });
+      }
+
+      document.addEventListener("click", (evt) => {
+        if (!resultsBox.contains(evt.target) && evt.target !== searchInput) {
+          clearResults();
         }
       });
-    }
-
-    // Fermer la liste si on clique ailleurs
-    document.addEventListener("click", (evt) => {
-      if (!resultsBox.contains(evt.target) && evt.target !== searchInput) {
-        clearResults();
-      }
-    });
-  })();
-
+    })();
   </script>
 </body>
 </html>
