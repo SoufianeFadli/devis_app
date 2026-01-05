@@ -17,6 +17,7 @@ from app.services.parser_progiciel import parse_progiciel_csv
 from app.services.engine import compute_devis, simulate_transport
 from pydantic import BaseModel
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from import_clients import import_clients
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "devis.db"
@@ -30,6 +31,42 @@ templates = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"])
 )
+# --- Initialisation table clients + import CSV si nécessaire ---
+def ensure_clients_imported():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        # 1) vérifier si la table existe
+        cur.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='clients'
+        """)
+        has_table = cur.fetchone() is not None
+
+        if not has_table:
+            # si la table n'existe pas du tout, on lance l'import
+            conn.close()
+            print("Table clients absente → import CSV...")
+            import_clients()
+            return
+
+        # 2) si la table existe, vérifier si elle est vide
+        cur.execute("SELECT COUNT(*) FROM clients")
+        (nb,) = cur.fetchone()
+        conn.close()
+
+        if nb == 0:
+            print("Table clients vide → import CSV...")
+            import_clients()
+        else:
+            print(f"Table clients déjà peuplée ({nb} lignes), pas d'import.")
+    except Exception as e:
+        print("⚠️ Erreur ensure_clients_imported:", e)
+
+
+# Appel au démarrage du module
+ensure_clients_imported()
+
 # === Base SQLite clients ======================================================
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)

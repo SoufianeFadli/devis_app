@@ -8,7 +8,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "devis.db"
 DATA_DIR = BASE_DIR / "data"
-CLIENTS_CSV = DATA_DIR / "liste_client_sbbm.csv"
+CSV_PATH = DATA_DIR / "liste_client_sbbm.csv"   # ← on garde ce nom ici
 
 
 def ensure_table_clients(conn: sqlite3.Connection) -> None:
@@ -49,7 +49,6 @@ def import_clients() -> None:
         ignorees = 0
 
         for row in reader:
-            # Récupérer proprement les colonnes
             code = (row.get("CODE_CLIENT") or "").strip()
             nom = (row.get("NOM_CLIENT") or "").strip()
 
@@ -66,7 +65,6 @@ def import_clients() -> None:
                     """,
                     (code, nom),
                 )
-                # si la ligne a vraiment été insérée (et pas ignorée pour doublon)
                 if cur.rowcount:
                     inserees += 1
                 else:
