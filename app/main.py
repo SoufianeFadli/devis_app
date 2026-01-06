@@ -34,6 +34,52 @@ templates = Environment(
 )
 SECRET_KEY = "change-moi-en-une-chaine-un-peu-longue"
 
+# --- Initialisation base SQLite (table users) ---
+
+def init_db_users():
+    """Crée la table users si elle n'existe pas et insère les commerciaux de base."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # Création de la table
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            code_commercial TEXT NOT NULL,
+            nom TEXT NOT NULL
+        )
+        """
+    )
+
+    # Données de base (commerciaux)
+    seed_users = [
+        ("ga",              "1234",     "GA",  "Commercial GA"),
+        ("FIKRI HAMMADI",   "SBBM FH",  "FH",  "Commercial FH"),
+        ("ELOMARI AHMED",   "SBBM EA",  "EA",  "Commercial EA"),
+        ("CHARROUK ABDELKARIM", "SBBM CH", "CH", "Commercial CH"),
+        ("BOUALI",          "SBBM BA",  "BA",  "Commercial BA"),
+        ("DGA",             "SBBM DGA", "DGA", "Commercial DGA"),
+    ]
+
+    # INSERT OR IGNORE → ne double pas les lignes si elles existent
+    cur.executemany(
+        """
+        INSERT OR IGNORE INTO users (username, password_hash, code_commercial, nom)
+        VALUES (?, ?, ?, ?)
+        """,
+        seed_users,
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# Appel au démarrage du module (local + Render)
+init_db_users()
+
 def hash_password(pwd: str) -> str:
     """Retourne le hash SHA256 d'un mot de passe en texte clair."""
     return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
