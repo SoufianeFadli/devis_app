@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+import hashlib
 import sqlite3 
 from datetime import date
 from io import BytesIO
@@ -8,7 +9,7 @@ import tempfile
 import base64 
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException,Query
+from fastapi import Body, FastAPI, Request, UploadFile, File, Form, HTTPException,Query, status
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -31,6 +32,58 @@ templates = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"])
 )
+SECRET_KEY = "change-moi-en-une-chaine-un-peu-longue"
+
+def hash_password(pwd: str) -> str:
+    """Retourne le hash SHA256 d'un mot de passe en texte clair."""
+    return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
+
+
+def authenticate_user(username: str, password: str):
+    """Vérifie username / password, retourne le row user ou None."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    if row["password_hash"] != hash_password(password):
+        return None
+
+    return row
+
+
+def get_current_user(request: Request):
+    """Récupère l'utilisateur courant à partir du cookie session_username."""
+    username = request.cookies.get("session_username")
+    if not username:
+        return None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, username, code_commercial, nom FROM users WHERE username = ?",
+        (username,),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "code_commercial": row["code_commercial"],
+        "nom": row["nom"],
+    }
+
+
 # --- Initialisation table clients + import CSV si nécessaire ---
 def ensure_clients_imported():
     try:
@@ -315,6 +368,78 @@ app = FastAPI()
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request):
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": "",
+        },
+    )
+
+# Traitement login (POST)
+@app.post("/login", response_class=HTMLResponse)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """
+    Authentification SIMPLE :
+    - on compare username ET password_hash exactement comme en base.
+    """
+
+    username_input = (username or "").strip()
+    password_input = (password or "").strip()
+
+    # Petit log dans le terminal pour debug
+    print("Tentative login →", repr(username_input), repr(password_input))
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # 🔹 Requête ultra simple : username + password_hash
+    cur.execute(
+        """
+        SELECT id, username, password_hash, code_commercial, nom
+        FROM users
+        WHERE username = ? AND password_hash = ?
+        """,
+        (username_input, password_input),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        print("⚠️ Login échoué")
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Identifiant ou mot de passe incorrect.",
+            },
+            status_code=401,
+        )
+
+    print("✅ Login OK pour", row["username"], "code_commercial:", row["code_commercial"])
+
+    # 🔹 Redirection vers le formulaire AVEC cookies
+    resp = RedirectResponse(url="/devis/form", status_code=status.HTTP_303_SEE_OTHER)
+    resp.set_cookie("user_code_commercial", row["code_commercial"], httponly=True)
+    resp.set_cookie("user_nom", row["nom"], httponly=False)
+    resp.set_cookie("user_username", row["username"], httponly=False)
+    return resp
+
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse(url="/login", status_code=303)
+    resp.delete_cookie("session_username")
+    return resp
+
 @app.post("/clients/new")
 async def create_client(
     code_client: str = Form(...),
@@ -374,20 +499,28 @@ LAST_SURFACE_TS: float = 0.0
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse(
-        "home.html",
-        {"request": request},
-    )
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    # connecté → on envoie vers le formulaire
+    return RedirectResponse(url="/devis/form", status_code=303)
 
 @app.get("/devis/form", response_class=HTMLResponse)
 def devis_form(request: Request):
     """Affiche le formulaire de saisie."""
+
     today_str = date.today().strftime("%d/%m/%Y")
+
     try:
         next_ref = get_next_ref_devis()
     except Exception as e:
         print("⚠️ Erreur get_next_ref_devis:", e)
         next_ref = ""
+
+    # 🔹 Infos de l’utilisateur connecté (cookies mis au login)
+    user_code_commercial = request.cookies.get("user_code_commercial", "")
+    user_nom = request.cookies.get("user_nom", "")
+    user_username = request.cookies.get("user_username", "")
 
     return templates.TemplateResponse(
         "devis_form.html",
@@ -396,7 +529,9 @@ def devis_form(request: Request):
             "today": today_str,
             "liste_commerciaux": COMMERCIAUX,
             "next_ref_devis": next_ref,
-            "logo_data_uri": LOGO_DATA_URI,
+            "user_code_commercial": user_code_commercial,
+            "user_nom": user_nom,
+            "user_username": user_username,
         },
     )
 
@@ -439,6 +574,13 @@ async def generate_devis(
     # Fichier progiciel
     fichier_progiciel: UploadFile | None = File(None),
 ):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    # On force le code commercial d’après l’utilisateur connecté
+    code_commercial = user["code_commercial"]
+    
     """
     Récupère le formulaire + (optionnellement) le CSV progiciel ou la saisie manuelle,
     calcule le devis puis renvoie un PDF (si WeasyPrint OK) ou l’HTML sinon.

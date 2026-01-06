@@ -233,16 +233,32 @@
       <div class="card" style="margin-top:12px;">
         <div class="card-title">COMMERCIAL & REMISES</div>
         <div class="grid2">
+      
           <label class="lbl">Code commercial</label>
-          <select class="inp" name="code_commercial" id="code_commercial">
-            {% for code, nom in liste_commerciaux.items() %}
-            <option value="{{ code }}">{{ code }} - {{ nom }}</option>
-            {% endfor %}
-          </select>
-
+          <div>
+            <select class="inp"
+                    name="code_commercial_visible"
+                    id="code_commercial"
+                    {% if user_code_commercial %}disabled{% endif %}>
+              {% for code, nom in liste_commerciaux.items() %}
+              <option value="{{ code }}"
+                {% if user_code_commercial and code == user_code_commercial %}selected{% endif %}>
+                {{ code }} - {{ nom }}
+              </option>
+              {% endfor %}
+            </select>
+            <!-- Champ caché réellement envoyé au backend -->
+            <input type="hidden"
+                   name="code_commercial"
+                   value="{{ user_code_commercial or '' }}">
+          </div>
+      
           <label class="lbl">Nom commercial</label>
-          <input class="inp" id="nom_commercial" name="nom_commercial" readonly />
-
+          <input class="inp"
+                 id="nom_commercial"
+                 name="nom_commercial"
+                 value="{{ user_nom or '' }}"
+                 readonly />
           <label class="lbl">Remise poutrelles (%)</label>
           <input class="inp" type="number" step="0.01" name="remise_poutrelle" value="30" />
 
@@ -253,7 +269,7 @@
           <input class="inp" type="number" step="0.01" name="prix_ct" value="3" />
 
           <label class="lbl">Prix unitaire treillis soudés (DH)</label>
-          <input class="inp" type="number" step="0.01" name="prix_treillis" value="160" />
+          <input class="inp" type="number" step="1" name="prix_treillis" value="160" />
         </div>
       </div>
 
@@ -457,8 +473,12 @@
         inputNom.value = mappingCommerciaux[code] || "";
       }
 
+    // 🔹 Si le commercial n'est PAS figé par le login,
+    // alors on laisse le user choisir et on met le nom à jour.
+    if (!selectCode.disabled) {
       selectCode.addEventListener("change", updateNomCommercial);
       updateNomCommercial();
+    }  
     })();
 
     // --- Gestion mode de saisie progiciel / manuel ---
