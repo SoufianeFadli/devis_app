@@ -5,9 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Devis SBBM - {{ ref_devis }}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* Cacher la barre utilisateur et les boutons d’action dans le PDF */
+    @media print {
+      .user-bar,
+      .actions-top {
+        display: none !important;
+      }
+      .app-body {
+        padding-top: 0 !important;
+      }
+    }
+  </style>
 </head>
 <body class="app-body">
-
+  {% if user_code_commercial %}
+  <div class="user-bar">
+    <div class="user-bar-left">
+      Connecté : <strong>{{ user_code_commercial }}</strong>
+      {% if user_nom %} ({{ user_nom }}){% endif %}
+    </div>
+    <div class="user-bar-right">
+      <a href="/logout" class="user-bar-link">Déconnexion</a>
+    </div>
+  </div>
+  {% endif %}
   <!-- Bandeau d’actions (caché en PDF via CSS print) -->
   <div class="app-shell">
   <div class="actions-top">

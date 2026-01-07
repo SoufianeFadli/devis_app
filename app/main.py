@@ -482,8 +482,12 @@ def login_submit(
 
 @app.get("/logout")
 def logout():
-    resp = RedirectResponse(url="/login", status_code=303)
-    resp.delete_cookie("session_username")
+    """Déconnexion : on supprime les cookies et on renvoie vers /login."""
+    resp = RedirectResponse(url="/login", status_code=302)
+    resp.delete_cookie("user_id")
+    resp.delete_cookie("user_username")
+    resp.delete_cookie("user_code_commercial")
+    resp.delete_cookie("user_nom")
     return resp
 
 @app.post("/clients/new")

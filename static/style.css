@@ -770,3 +770,31 @@ table.devis td.strong {
   font-size: 11px;
   color: #6b7280;
 }
+/* ===== Barre utilisateur (login) ===== */
+.user-bar {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: #111827;         /* gris très foncé */
+  color: #f9fafb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 0 0 8px 8px;
+}
+
+.user-bar-left {
+  font-weight: 500;
+}
+
+.user-bar-right .user-bar-link {
+  color: #fbbf24;              /* jaune doré */
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.user-bar-right .user-bar-link:hover {
+  text-decoration: underline;
+}

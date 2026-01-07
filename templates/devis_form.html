@@ -140,6 +140,18 @@
 </head>
 <body>
   <div class="page">
+    {% if user_code_commercial %}
+    <div class="user-bar">
+      <div class="user-bar-left">
+        Connecté : <strong>{{ user_code_commercial }}</strong>
+        {% if user_nom %} ({{ user_nom }}){% endif %}
+      </div>
+      <div class="user-bar-right">
+        <a href="/logout" class="user-bar-link">Déconnexion</a>
+      </div>
+    </div>
+    {% endif %}
+
     <header class="header">
       <div class="header-left">
         <div class="societe">SOCIÉTÉ DE BÂTIMENTS ET BÉTON MOULÉ “SBBM”</div>
@@ -233,43 +245,78 @@
       <div class="card" style="margin-top:12px;">
         <div class="card-title">COMMERCIAL & REMISES</div>
         <div class="grid2">
-      
+          <!-- Code commercial -->
           <label class="lbl">Code commercial</label>
           <div>
-            <select class="inp"
-                    name="code_commercial_visible"
-                    id="code_commercial"
-                    {% if user_code_commercial %}disabled{% endif %}>
-              {% for code, nom in liste_commerciaux.items() %}
-              <option value="{{ code }}"
-                {% if user_code_commercial and code == user_code_commercial %}selected{% endif %}>
-                {{ code }} - {{ nom }}
-              </option>
-              {% endfor %}
-            </select>
-            <!-- Champ caché réellement envoyé au backend -->
-            <input type="hidden"
-                   name="code_commercial"
-                   value="{{ user_code_commercial or '' }}">
+            {% if user_code_commercial %}
+              <!-- Champ caché pour le backend -->
+              <input type="hidden"
+                     name="code_commercial"
+                     id="code_commercial"
+                     value="{{ user_code_commercial }}">
+              <!-- Affichage lecture seule -->
+              <input class="inp" type="text"
+                     value="{{ user_code_commercial }} - {{ user_nom or '' }}"
+                     readonly>
+            {% else %}
+              <!-- Fallback si pas de login -->
+              <select class="inp" name="code_commercial" id="code_commercial">
+                {% for code, nom in liste_commerciaux.items() %}
+                <option value="{{ code }}">{{ code }} - {{ nom }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
           </div>
-      
+
+          <!-- Nom commercial -->
           <label class="lbl">Nom commercial</label>
-          <input class="inp"
-                 id="nom_commercial"
-                 name="nom_commercial"
-                 value="{{ user_nom or '' }}"
-                 readonly />
+          <div>
+            <input class="inp"
+                   id="nom_commercial"
+                   name="nom_commercial"
+                   value="{{ user_nom or '' }}"
+                   readonly />
+          </div>
+
+          <!-- Remise poutrelles -->
           <label class="lbl">Remise poutrelles (%)</label>
-          <input class="inp" type="number" step="0.01" name="remise_poutrelle" value="30" />
+          <div>
+            <input class="inp"
+                   type="number"
+                   step="0.01"
+                   name="remise_poutrelle"
+                   value="30" />
+          </div>
 
+          <!-- Remise hourdis -->
           <label class="lbl">Remise hourdis (%)</label>
-          <input class="inp" type="number" step="0.01" name="remise_hourdis" value="25" />
+          <div>
+            <input class="inp"
+                   type="number"
+                   step="0.01"
+                   name="remise_hourdis"
+                   value="25" />
+          </div>
 
+          <!-- Prix CT -->
           <label class="lbl">Prix unitaire contrôle technique (DH)</label>
-          <input class="inp" type="number" step="0.01" name="prix_ct" value="3" />
+          <div>
+            <input class="inp"
+                   type="number"
+                   step="0.01"
+                   name="prix_ct"
+                   value="3" />
+          </div>
 
+          <!-- Prix treillis -->
           <label class="lbl">Prix unitaire treillis soudés (DH)</label>
-          <input class="inp" type="number" step="1" name="prix_treillis" value="160" />
+          <div>
+            <input class="inp"
+                   type="number"
+                   step="1"
+                   name="prix_treillis"
+                   value="160" />
+          </div>
         </div>
       </div>
 
@@ -473,12 +520,12 @@
         inputNom.value = mappingCommerciaux[code] || "";
       }
 
-    // 🔹 Si le commercial n'est PAS figé par le login,
-    // alors on laisse le user choisir et on met le nom à jour.
-    if (!selectCode.disabled) {
-      selectCode.addEventListener("change", updateNomCommercial);
-      updateNomCommercial();
-    }  
+      // 🔹 Si le commercial n'est PAS figé par le login,
+      // alors on laisse le user choisir et on met le nom à jour.
+      if (selectCode && !selectCode.disabled && selectCode.tagName === "SELECT") {
+        selectCode.addEventListener("change", updateNomCommercial);
+        updateNomCommercial();
+      }
     })();
 
     // --- Gestion mode de saisie progiciel / manuel ---
