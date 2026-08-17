@@ -26,15 +26,17 @@ def ensure_table_clients(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def import_clients() -> None:
-    print(f"Base SQLite : {DB_PATH}")
+def import_clients(db_path: str | Path | None = None) -> None:
+    target_db = Path(db_path) if db_path is not None else DB_PATH
+    print(f"Base SQLite : {target_db}")
     print(f"Fichier CSV : {CSV_PATH}")
 
     if not CSV_PATH.exists():
         print("❌ CSV introuvable, vérifie le chemin.")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    target_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(target_db)
     ensure_table_clients(conn)
     cur = conn.cursor()
 

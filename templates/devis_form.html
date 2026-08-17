@@ -326,7 +326,7 @@
         <div class="radio-group">
           <label>
             <input type="radio" name="saisie_mode" value="progiciel" id="mode_progiciel" checked>
-            À partir du fichier progiciel (CSV)
+            À partir d'un ou plusieurs fichiers progiciel (CSV)
           </label>
           <label>
             <input type="radio" name="saisie_mode" value="manuel" id="mode_manuel">
@@ -334,13 +334,34 @@
           </label>
         </div>
 
+        <div class="zone-block" style="margin-top:10px;">
+          <div class="zone-title">PRÉSENTATION DU DEVIS</div>
+          <div class="radio-group">
+            <label>
+              <input type="radio" name="presentation_mode" value="regroupe" checked>
+              Devis regroupé
+            </label>
+            <label>
+              <input type="radio" name="presentation_mode" value="par_niveau">
+              Détail par niveau (un niveau par fichier CSV)
+            </label>
+          </div>
+          <div class="hint" style="margin-top:6px;">
+            En détail par niveau, le nom du fichier CSV devient le nom du niveau.
+          </div>
+        </div>
+
         <!-- Zone fichier progiciel -->
         <div id="zone_progiciel" class="zone-block" style="margin-top:10px;">
-          <div class="zone-title">FICHIER PROGICIEL (CSV)</div>
+          <div class="zone-title">FICHIERS PROGICIEL (CSV)</div>
           <div class="grid2">
-            <div class="lbl">Importer le CSV</div>
-            <input class="inp" type="file" name="fichier_progiciel" accept=".csv,text/csv" />
-            <div class="hint">Si vide, le système génère un devis sans quantités.</div>
+            <div class="lbl">Importer les CSV</div>
+            <input class="inp" type="file" name="fichier_progiciel" accept=".csv,text/csv" multiple />
+            <div class="hint">
+              Sélectionnez un ou plusieurs fichiers. Leurs quantités et surfaces seront
+              réunies dans un seul devis et les articles identiques seront regroupés.
+              Si la sélection est vide, le devis sera sans quantités.
+            </div>
           </div>
         </div>
 

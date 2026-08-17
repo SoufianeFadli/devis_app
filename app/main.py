@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import hashlib
+import os
 import sqlite3 
 from datetime import date
 from io import BytesIO
@@ -15,16 +16,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from app.services.parser_progiciel import parse_progiciel_csv
-from app.services.engine import compute_devis, simulate_transport
+from app.services.engine import (
+    compute_devis,
+    group_identical_articles,
+    simulate_transport,
+    sort_articles_for_display,
+)
 from pydantic import BaseModel
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from import_clients import import_clients
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "devis.db"
-UPLOAD_DIR = BASE_DIR / "uploads"
+STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(BASE_DIR))).resolve()
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = STORAGE_DIR / "devis.db"
+UPLOAD_DIR = STORAGE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-PDF_DIR = BASE_DIR / "generated_pdfs"
+PDF_DIR = STORAGE_DIR / "generated_pdfs"
 PDF_DIR.mkdir(exist_ok=True)
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
@@ -32,7 +40,7 @@ templates = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"])
 )
-SECRET_KEY = "change-moi-en-une-chaine-un-peu-longue"
+SECRET_KEY = os.getenv("SECRET_KEY", "local-development-secret")
 
 # --- Initialisation base SQLite (table users) ---
 
@@ -146,7 +154,7 @@ def ensure_clients_imported():
             # si la table n'existe pas du tout, on lance l'import
             conn.close()
             print("Table clients absente → import CSV...")
-            import_clients()
+            import_clients(DB_PATH)
             return
 
         # 2) si la table existe, vérifier si elle est vide
@@ -156,7 +164,7 @@ def ensure_clients_imported():
 
         if nb == 0:
             print("Table clients vide → import CSV...")
-            import_clients()
+            import_clients(DB_PATH)
         else:
             print(f"Table clients déjà peuplée ({nb} lignes), pas d'import.")
     except Exception as e:
@@ -342,7 +350,7 @@ def insert_devis_row(
             ref_devis, date_devis, client, chantier, code_client,
             code_commercial, nom_commercial,
             total_ht, total_ttc,
-            saisie_mode, mode_transport, transport_mode
+            mode_saisie, mode_transport, transport_mode
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -555,6 +563,18 @@ def home(request: Request):
     # connecté → on envoie vers le formulaire
     return RedirectResponse(url="/devis/form", status_code=303)
 
+
+@app.get("/health")
+def health_check():
+    """Contrôle de santé utilisé par Render pendant les déploiements."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("SELECT 1")
+        conn.close()
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=503, detail="Base SQLite indisponible") from e
+    return {"status": "ok"}
+
 @app.get("/devis/form", response_class=HTMLResponse)
 def devis_form(request: Request):
     """Affiche le formulaire de saisie."""
@@ -612,6 +632,8 @@ async def generate_devis(
     transport_prix_hourdis_manuel: float = Form(0.0),
     # Choix de saisie : "progiciel" ou "manuel"
     saisie_mode: str = Form("progiciel"),
+    # Présentation : devis consolidé ou sections séparées par fichier/niveau
+    presentation_mode: str = Form("regroupe"),
     # Saisie manuelle – listes dynamiques
     manual_pout_type: Optional[List[str]] = Form(None),
     manual_pout_longueur: Optional[List[float]] = Form(None),
@@ -621,8 +643,8 @@ async def generate_devis(
     manual_hourdis_nombre: Optional[List[float]] = Form(None),
     surface_ct_manual: float = Form(0.0),
     nb_treillis_manual: float = Form(0.0),
-    # Fichier progiciel
-    fichier_progiciel: UploadFile | None = File(None),
+    # Un ou plusieurs fichiers progiciel
+    fichier_progiciel: Optional[List[UploadFile]] = File(None),
 ):
     """
     Récupère le formulaire + (optionnellement) le CSV progiciel ou la saisie manuelle,
@@ -643,6 +665,8 @@ async def generate_devis(
     hourdis: List[dict] = []
     surface_ct: float = 0.0
     surface_ts: float = 0.0
+    source_filenames: List[str] = []
+    niveaux_sources: List[Dict[str, Any]] = []
 
     # Normaliser les listes manuelles pour éviter None
     manual_pout_type = manual_pout_type or []
@@ -658,33 +682,85 @@ async def generate_devis(
 
     # === 1) MODE PROGICIEL ====================================================
     if saisie_mode == "progiciel":
-        if fichier_progiciel and fichier_progiciel.filename:
-            suffix = ".csv"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                shutil.copyfileobj(fichier_progiciel.file, tmp)
-                tmp_path = Path(tmp.name)
+        fichiers = [f for f in (fichier_progiciel or []) if f.filename]
+        if fichiers:
+            for fichier in fichiers:
+                tmp_path: Optional[Path] = None
+                filename = Path(fichier.filename or "fichier.csv").name
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                        shutil.copyfileobj(fichier.file, tmp)
+                        tmp_path = Path(tmp.name)
 
-            parsed = parse_progiciel_csv(tmp_path)
-            poutrelles = parsed.get("poutrelles", [])
-            hourdis = parsed.get("hourdis", [])
-            surface_ct = float(parsed.get("surface_ct", 0.0) or 0.0)
-            surface_ts = float(parsed.get("surface_ts", 0.0) or 0.0)
+                    parsed = parse_progiciel_csv(tmp_path)
+                    fichier_poutrelles = parsed.get("poutrelles", [])
+                    fichier_hourdis = parsed.get("hourdis", [])
+                    fichier_surface_ct = float(parsed.get("surface_ct", 0.0) or 0.0)
+                    fichier_surface_ts = float(parsed.get("surface_ts", 0.0) or 0.0)
 
-            print(
-                f"DEBUG parse_progiciel_csv: {len(poutrelles)} poutrelles, "
-                f"{len(hourdis)} hourdis, SURFACE CT={surface_ct}, SURFACE TS={surface_ts}"
-            )
+                    niveau_poutrelles, niveau_hourdis = group_identical_articles(
+                        fichier_poutrelles, fichier_hourdis
+                    )
+                    niveau_poutrelles, niveau_hourdis = sort_articles_for_display(
+                        niveau_poutrelles, niveau_hourdis
+                    )
+                    niveaux_sources.append(
+                        {
+                            "nom": Path(filename).stem.strip().upper() or "NIVEAU",
+                            "filename": filename,
+                            "poutrelles": niveau_poutrelles,
+                            "hourdis": niveau_hourdis,
+                            "surface_ct": fichier_surface_ct,
+                            "surface_ts": fichier_surface_ts,
+                        }
+                    )
+
+                    # Un seul devis consolidé : les lignes sont concaténées et
+                    # les surfaces de tous les fichiers sont additionnées.
+                    poutrelles.extend(fichier_poutrelles)
+                    hourdis.extend(fichier_hourdis)
+                    surface_ct += fichier_surface_ct
+                    surface_ts += fichier_surface_ts
+                    source_filenames.append(filename)
+
+                    print(
+                        f"DEBUG CSV {filename}: {len(fichier_poutrelles)} poutrelles, "
+                        f"{len(fichier_hourdis)} hourdis, "
+                        f"SURFACE CT={fichier_surface_ct}, SURFACE TS={fichier_surface_ts}"
+                    )
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Impossible de lire le fichier CSV '{filename}': {e}",
+                    ) from e
+                finally:
+                    if tmp_path is not None:
+                        try:
+                            tmp_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    await fichier.close()
+
+            nb_poutrelles_avant = len(poutrelles)
+            nb_hourdis_avant = len(hourdis)
+            poutrelles, hourdis = group_identical_articles(poutrelles, hourdis)
 
             LAST_POUTRELLES = poutrelles
             LAST_HOURDIS = hourdis
             LAST_SURFACE_CT = surface_ct
             LAST_SURFACE_TS = surface_ts
 
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+            print(
+                f"DEBUG consolidation {len(source_filenames)} CSV: "
+                f"poutrelles {nb_poutrelles_avant} -> {len(poutrelles)}, "
+                f"hourdis {nb_hourdis_avant} -> {len(hourdis)}, "
+                f"SURFACE CT={surface_ct}, SURFACE TS={surface_ts}"
+            )
         else:
+            LAST_POUTRELLES = []
+            LAST_HOURDIS = []
+            LAST_SURFACE_CT = 0.0
+            LAST_SURFACE_TS = 0.0
             print("DEBUG generate_devis: mode progiciel mais aucun fichier fourni.")
 
     # === 2) MODE MANUEL =======================================================
@@ -730,6 +806,21 @@ async def generate_devis(
         # On reconstruit surface_ts à partir du nombre de treillis saisi
         surface_ts = float(nb_treillis_manual or 0.0) * 10.0
 
+        niveau_poutrelles, niveau_hourdis = sort_articles_for_display(
+            poutrelles, hourdis
+        )
+
+        niveaux_sources.append(
+            {
+                "nom": (niveau or "SAISIE MANUELLE").strip().upper(),
+                "filename": "",
+                "poutrelles": niveau_poutrelles,
+                "hourdis": niveau_hourdis,
+                "surface_ct": surface_ct,
+                "surface_ts": surface_ts,
+            }
+        )
+
         print(
             f"DEBUG saisie manuelle: {len(poutrelles)} poutrelles, "
             f"{len(hourdis)} hourdis, SURFACE CT={surface_ct}, SURFACE TS={surface_ts}"
@@ -740,7 +831,9 @@ async def generate_devis(
         LAST_SURFACE_CT = surface_ct
         LAST_SURFACE_TS = surface_ts
 
-    # === 3) CALCUL DU DEVIS ===================================================
+    # === 3) TRI VISUEL ET CALCUL DU DEVIS ====================================
+    poutrelles, hourdis = sort_articles_for_display(poutrelles, hourdis)
+
     data_calc = compute_devis(
         poutrelles,
         hourdis,
@@ -757,6 +850,65 @@ async def generate_devis(
         transport_prix_hourdis_manuel,
     )
 
+    # === 4) PRÉSENTATION DÉTAILLÉE PAR NIVEAU ================================
+    if presentation_mode not in {"regroupe", "par_niveau"}:
+        presentation_mode = "regroupe"
+
+    niveaux_calc: List[Dict[str, Any]] = []
+    lignes_globales: List[Dict[str, Any]] = []
+
+    if presentation_mode == "par_niveau" and niveaux_sources:
+        tr_ml_global = float(data_calc.get("transport_par_ml_brut", 0.0) or 0.0)
+        tr_hourdis_global = float(
+            data_calc.get("transport_par_hourdis_brut", 0.0) or 0.0
+        )
+
+        for source in niveaux_sources:
+            niveau_calc = compute_devis(
+                source["poutrelles"],
+                source["hourdis"],
+                source["surface_ct"],
+                0.0,  # le treillis est arrondi et facturé une seule fois globalement
+                remise_poutrelle,
+                remise_hourdis,
+                prix_ct,
+                prix_treillis,
+                mode_transport,
+                "manuel" if mode_transport == "rendu" else transport_mode,
+                distance_km,
+                tr_ml_global,
+                tr_hourdis_global,
+            )
+            niveaux_calc.append(
+                {
+                    **source,
+                    "lignes": niveau_calc["lignes"],
+                    "subtotal_ht": niveau_calc["total_ht"],
+                }
+            )
+
+        lignes_globales = [
+            ligne
+            for ligne in data_calc.get("lignes", [])
+            if ligne.get("type") == "TREILLES SOUDEES"
+        ]
+
+        # Répartit l'éventuel centime d'arrondi sur le dernier sous-total afin
+        # que la somme affichée des niveaux reste égale au total général.
+        total_global_lines = round(
+            sum(float(ligne.get("total", 0.0) or 0.0) for ligne in lignes_globales),
+            2,
+        )
+        total_niveaux_cible = round(data_calc["total_ht"] - total_global_lines, 2)
+        total_niveaux_affiche = round(
+            sum(float(item["subtotal_ht"]) for item in niveaux_calc), 2
+        )
+        ecart_arrondi = round(total_niveaux_cible - total_niveaux_affiche, 2)
+        if niveaux_calc and ecart_arrondi:
+            niveaux_calc[-1]["subtotal_ht"] = round(
+                float(niveaux_calc[-1]["subtotal_ht"]) + ecart_arrondi, 2
+            )
+
     print(
         "DEBUG main.generate_devis -> "
         f"poutrelles={len(poutrelles)}, hourdis={len(hourdis)}, "
@@ -764,7 +916,7 @@ async def generate_devis(
         f"transport_total_choisi={data_calc.get('transport_total_choisi')}"
     )
 
-    # === 4) SAUVEGARDE EN BASE SQLITE ========================================
+    # === 5) SAUVEGARDE EN BASE SQLITE ========================================
     date_devis_finale = date_devis or date.today().strftime("%d/%m/%Y")
     code_commercial_up = (code_commercial or "GA").upper()
     nom_commercial = user_nom or COMMERCIAUX.get(code_commercial_up, "")
@@ -787,7 +939,7 @@ async def generate_devis(
     except Exception as e:
         print("⚠️ Erreur insert_devis_row:", e)
 
-    # === 5) CONTEXTE TEMPLATE ================================================
+    # === 6) CONTEXTE TEMPLATE ================================================
     context: Dict[str, Any] = {
         "request": request,
         "code_client": code_client,
@@ -815,12 +967,19 @@ async def generate_devis(
         "prix_ct": prix_ct,
         "prix_treillis": prix_treillis,
         "saisie_mode": saisie_mode,
+        "presentation_mode": presentation_mode,
+        "niveaux_calc": niveaux_calc,
+        "lignes_globales": lignes_globales,
+        "source_filenames": source_filenames,
+        "nombre_fichiers": len(source_filenames),
+        "surface_ct": surface_ct,
+        "surface_ts": surface_ts,
         "logo_data_uri": LOGO_DATA_URI,
         "pdf_available": WEASYPRINT_OK and HTML is not None,
         **data_calc,
     }
 
-    # === 6) Rendu HTML + génération PDF éventuelle ===========================
+    # === 7) Rendu HTML + génération PDF éventuelle ===========================
     template = templates.get_template("devis.html")
     html = template.render(context)
 

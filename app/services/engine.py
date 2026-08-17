@@ -52,6 +52,82 @@ def _flt(x: Any) -> float:
         return 0.0
 
 
+def group_identical_articles(
+    poutrelles: List[Dict[str, Any]],
+    hourdis: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Regroupe les articles identiques sans modifier les listes reçues.
+
+    Deux poutrelles sont identiques si leur type, leur longueur et leur nombre
+    d'étriers sont identiques. Les hourdis sont regroupés par type. L'ordre de
+    la première apparition de chaque article est conservé.
+    """
+    poutrelles_groupees: Dict[Tuple[str, float, float], Dict[str, Any]] = {}
+    for poutrelle in poutrelles:
+        type_p = str(poutrelle.get("type", "")).strip().upper()
+        longueur = _flt(poutrelle.get("longueur"))
+        etrier = _flt(poutrelle.get("etrier"))
+        nombre = _flt(poutrelle.get("nombre"))
+
+        if not type_p or longueur <= 0 or nombre <= 0:
+            continue
+
+        # Le CSV utilise des valeurs décimales courtes. L'arrondi évite qu'une
+        # différence binaire invisible empêche le regroupement de deux articles.
+        key = (type_p, round(longueur, 4), round(etrier, 4))
+        if key not in poutrelles_groupees:
+            poutrelles_groupees[key] = {
+                "type": type_p,
+                "longueur": longueur,
+                "etrier": etrier,
+                "nombre": 0.0,
+            }
+        poutrelles_groupees[key]["nombre"] += nombre
+
+    hourdis_groupes: Dict[str, Dict[str, Any]] = {}
+    for ligne_hourdis in hourdis:
+        type_h = str(ligne_hourdis.get("type", "")).strip().upper()
+        nombre = _flt(ligne_hourdis.get("nombre"))
+
+        if not type_h or nombre <= 0:
+            continue
+
+        if type_h not in hourdis_groupes:
+            hourdis_groupes[type_h] = {"type": type_h, "nombre": 0.0}
+        hourdis_groupes[type_h]["nombre"] += nombre
+
+    return list(poutrelles_groupees.values()), list(hourdis_groupes.values())
+
+
+def sort_articles_for_display(
+    poutrelles: List[Dict[str, Any]],
+    hourdis: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Retourne les articles dans l'ordre souhaité sur le devis.
+
+    Les poutrelles sont classées de la plus longue à la plus courte. Les
+    hourdis sont classés selon la valeur numérique de leur désignation : H8,
+    H12, H16, H20, H25, H30. Les articles inconnus sont placés à la fin.
+    """
+
+    def poutrelle_key(article: Dict[str, Any]) -> Tuple[float, str, float]:
+        return (
+            -_flt(article.get("longueur")),
+            str(article.get("type", "")).strip().upper(),
+            _flt(article.get("etrier")),
+        )
+
+    def hourdis_key(article: Dict[str, Any]) -> Tuple[float, str]:
+        type_h = str(article.get("type", "")).strip().upper()
+        try:
+            hauteur = float(type_h[1:]) if type_h.startswith("H") else float("inf")
+        except ValueError:
+            hauteur = float("inf")
+        return hauteur, type_h
+
+    return sorted(poutrelles, key=poutrelle_key), sorted(hourdis, key=hourdis_key)
+
+
 def _compute_poids(
     poutrelles: List[Dict[str, Any]], hourdis: List[Dict[str, Any]]
 ) -> Tuple[float, float, float, float, float]:
@@ -138,7 +214,7 @@ def simulate_transport(
     result["nb_camions"] = nb_camions
 
     # Prix d'un seul camion (dernière formule que tu as donnée)
-    prix_camion = ((distance_km * 2.0 * 0.4 * 14.1)+200) * 1.05
+    prix_camion = ((distance_km * 2.0 * 0.4 * 11.0)+200) * 1.05
     result["prix_camion_auto"] = prix_camion
 
     transport_total_auto = nb_camions * prix_camion
@@ -348,6 +424,10 @@ def compute_devis(
         "transport_total_choisi": round(info_tr["transport_total_effectif"], 2),
         "transport_par_ml": round(info_tr["transport_par_ml_effectif"], 4),
         "transport_par_hourdis": round(info_tr["transport_par_hourdis_effectif"], 4),
+        # Valeurs non arrondies réutilisées pour ventiler exactement le même
+        # transport dans la présentation détaillée par niveau.
+        "transport_par_ml_brut": info_tr["transport_par_ml_effectif"],
+        "transport_par_hourdis_brut": info_tr["transport_par_hourdis_effectif"],
         "nb_camions": info_tr["nb_camions"],
         "poids_total": round(info_tr["poids_total"], 2),
         "poids_poutrelles": round(info_tr["poids_poutrelles"], 2),

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: devis-sbbm
+    runtime: python
+    region: frankfurt
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: STORAGE_DIR
+        value: /var/data
+      - key: SECRET_KEY
+        generateValue: true
+    disk:
+      name: devis-data
+      mountPath: /var/data
+      sizeGB: 1

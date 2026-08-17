@@ -99,8 +99,27 @@
           <div class="row">
             <div class="lbl">Réf devis</div><div class="val">{{ ref_devis }}</div>
           </div>
+          {% if nombre_fichiers %}
+          <div class="row">
+            <div class="lbl">Fichiers CSV</div>
+            <div class="val">
+              {{ nombre_fichiers }} fichier{% if nombre_fichiers > 1 %}s{% endif %} :
+              {{ source_filenames|join(', ') }}
+            </div>
+          </div>
+          {% endif %}
           <div class="row">
             <div class="lbl">Mode livraison</div><div class="val">{{ mode_livraison }}</div>
+          </div>
+          <div class="row">
+            <div class="lbl">Présentation</div>
+            <div class="val">
+              {% if presentation_mode == "par_niveau" %}
+                Détail par niveau
+              {% else %}
+                Devis regroupé
+              {% endif %}
+            </div>
           </div>
           <div class="row">
             <div class="lbl">Distance (km)</div><div class="val">{{ distance_km }}</div>
@@ -158,8 +177,87 @@
     </section>
     {% endif %}
 
-    <!-- TABLEAU PRODUITS -->
+    <!-- TABLEAUX PRODUITS -->
     <section class="table-wrap">
+      {% if presentation_mode == "par_niveau" and niveaux_calc %}
+      <div class="section-title">DÉTAIL DES FOURNITURES PAR NIVEAU</div>
+
+      {% for niveau_item in niveaux_calc %}
+      <div class="card card-resume" style="margin-top:14px; page-break-after:avoid;">
+        <div class="card-title">NIVEAU : {{ niveau_item.nom }}</div>
+        <div class="info-table">
+          <div class="row">
+            <div class="lbl">Surface CT</div>
+            <div class="val">{{ "%.2f"|format(niveau_item.surface_ct) }} m²</div>
+          </div>
+          <div class="row">
+            <div class="lbl">Surface TS</div>
+            <div class="val">{{ "%.2f"|format(niveau_item.surface_ts) }} m²</div>
+          </div>
+        </div>
+      </div>
+
+      <table class="devis-table">
+        <thead>
+          <tr>
+            <th class="col-type">Désignation</th>
+            <th>Longueur / Surface</th>
+            <th>Étriers</th>
+            <th>Quantité</th>
+            <th>Prix unitaire HT</th>
+            <th>Total ligne HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in niveau_item.lignes %}
+          <tr>
+            <td class="col-type">{{ l.type }}</td>
+            <td class="num">{{ l.longueur }}</td>
+            <td class="num">{{ l.etrier }}</td>
+            <td class="num">{{ l.nombre }}</td>
+            <td class="num">{{ "%.3f"|format(l.prix) }}</td>
+            <td class="num strong">{{ "%.2f"|format(l.total) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="totaux-card" style="margin-top:6px; margin-bottom:16px;">
+        <div class="tot-row">
+          <div class="label">SOUS-TOTAL H.T. — {{ niveau_item.nom }}</div>
+          <div class="value">{{ "%.2f"|format(niveau_item.subtotal_ht) }} DH</div>
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if lignes_globales %}
+      <div class="section-title" style="margin-top:18px;">ÉLÉMENTS GLOBAUX DU PROJET</div>
+      <table class="devis-table">
+        <thead>
+          <tr>
+            <th class="col-type">Désignation</th>
+            <th>Longueur / Surface</th>
+            <th>Étriers</th>
+            <th>Quantité</th>
+            <th>Prix unitaire HT</th>
+            <th>Total ligne HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lignes_globales %}
+          <tr>
+            <td class="col-type">{{ l.type }}</td>
+            <td class="num">{{ l.longueur }}</td>
+            <td class="num">{{ l.etrier }}</td>
+            <td class="num">{{ l.nombre }}</td>
+            <td class="num">{{ "%.3f"|format(l.prix) }}</td>
+            <td class="num strong">{{ "%.2f"|format(l.total) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% else %}
       <div class="section-title">DÉTAIL DES FOURNITURES</div>
       <table class="devis-table">
         <thead>
@@ -197,6 +295,7 @@
           {% endfor %}
         </tbody>
       </table>
+      {% endif %}
 
       <!-- BLOC TOTAUX -->
       <div class="totaux-card">
