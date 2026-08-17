@@ -138,7 +138,7 @@ def simulate_transport(
     result["nb_camions"] = nb_camions
 
     # Prix d'un seul camion (dernière formule que tu as donnée)
-    prix_camion = ((distance_km * 2.0 * 0.4 * 11.0)+200) * 1.05
+    prix_camion = ((distance_km * 2.0 * 0.4 * 14.1)+200) * 1.05
     result["prix_camion_auto"] = prix_camion
 
     transport_total_auto = nb_camions * prix_camion
