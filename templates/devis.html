@@ -116,6 +116,8 @@
             <div class="val">
               {% if presentation_mode == "par_niveau" %}
                 Détail par niveau
+              {% elif presentation_mode == "ml_par_type" %}
+                Poutrelles au ML par type, étriers inclus
               {% else %}
                 Devis regroupé
               {% endif %}
@@ -179,7 +181,41 @@
 
     <!-- TABLEAUX PRODUITS -->
     <section class="table-wrap">
-      {% if presentation_mode == "par_niveau" and niveaux_calc %}
+      {% if presentation_mode == "ml_par_type" %}
+      <div class="section-title">DÉTAIL DES FOURNITURES - POUTRELLES AU MÈTRE LINÉAIRE</div>
+      <table class="devis-table">
+        <thead>
+          <tr>
+            <th class="col-type">Désignation</th>
+            <th>Quantité / Total ML</th>
+            <th>Étriers inclus</th>
+            <th>Prix unitaire HT / ML</th>
+            <th>Total ligne HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ligne in lignes_poutrelles_ml %}
+          <tr>
+            <td class="col-type">POUTRELLE {{ ligne.type }}</td>
+            <td class="num">{{ "%.2f"|format(ligne.total_ml) }} ML</td>
+            <td class="num">{{ ligne.total_etriers }}</td>
+            <td class="num">{{ "%.3f"|format(ligne.prix_ml_complet) }}</td>
+            <td class="num strong">{{ "%.2f"|format(ligne.total) }}</td>
+          </tr>
+          {% endfor %}
+          {% for ligne in lignes_autres_ml %}
+          <tr>
+            <td class="col-type">{{ ligne.type }}</td>
+            <td class="num">{{ ligne.nombre }}</td>
+            <td class="num">-</td>
+            <td class="num">{{ "%.3f"|format(ligne.prix) }}</td>
+            <td class="num strong">{{ "%.2f"|format(ligne.total) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% elif presentation_mode == "par_niveau" and niveaux_calc %}
       <div class="section-title">DÉTAIL DES FOURNITURES PAR NIVEAU</div>
 
       {% for niveau_item in niveaux_calc %}

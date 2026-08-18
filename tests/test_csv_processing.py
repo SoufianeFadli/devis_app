@@ -4,11 +4,16 @@ import unittest
 from pathlib import Path
 
 from app.services.engine import (
+    build_poutrelles_ml_by_type,
     compute_devis,
     group_identical_articles,
     sort_articles_for_display,
 )
 from app.services.parser_progiciel import parse_progiciel_csv
+from app.services.hourdis_corrections import (
+    apply_hourdis_overrides,
+    build_hourdis_overrides,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -147,6 +152,92 @@ class CsvProcessingTests(unittest.TestCase):
         )
         self.assertEqual(before_sort["total_ht"], after_sort["total_ht"])
         self.assertEqual(before_sort["total_ttc"], after_sort["total_ttc"])
+
+    def test_hourdis_can_be_corrected_before_grouping_and_calculation(self) -> None:
+        source_rows = [
+            {"type": "H30", "nombre": 10},
+            {"type": "H30", "nombre": 5},
+            {"type": "H16", "nombre": 4},
+        ]
+        overrides = build_hourdis_overrides(
+            ["0:0", "0:1", "0:2"], ["H8", "H12", "H16"]
+        )
+
+        corrected, changes = apply_hourdis_overrides(
+            source_rows, 0, overrides, "RDC.csv"
+        )
+        _, grouped = group_identical_articles([], corrected)
+        result = compute_devis(
+            [], grouped, 0, 0, 0, 0, 0, 0, "depart", "auto", 0, 0, 0
+        )
+
+        self.assertEqual([row["type"] for row in corrected], ["H8", "H12", "H16"])
+        self.assertEqual([row["type"] for row in source_rows], ["H30", "H30", "H16"])
+        self.assertEqual(len(changes), 2)
+        self.assertEqual(changes[0]["detected_type"], "H30")
+        self.assertEqual(changes[0]["corrected_type"], "H8")
+        self.assertEqual(result["total_ht"], 82.43)
+
+    def test_hourdis_correction_is_scoped_by_file_and_rejects_unknown_type(self) -> None:
+        overrides = build_hourdis_overrides(
+            ["0:0", "1:0", "bad-key"], ["H8", "H99", "H12"]
+        )
+        file_zero, _ = apply_hourdis_overrides(
+            [{"type": "H30", "nombre": 2}], 0, overrides, "RDC.csv"
+        )
+        file_one, _ = apply_hourdis_overrides(
+            [{"type": "H30", "nombre": 2}], 1, overrides, "ETAGE.csv"
+        )
+
+        self.assertEqual(file_zero[0]["type"], "H8")
+        self.assertEqual(file_one[0]["type"], "H30")
+
+    def test_poutrelles_ml_by_type_include_their_own_etriers(self) -> None:
+        poutrelles = [
+            {"type": "113", "longueur": 5, "etrier": 10, "nombre": 2},
+            {"type": "113", "longueur": 4, "etrier": 8, "nombre": 3},
+            {"type": "135", "longueur": 6, "etrier": 5, "nombre": 1},
+        ]
+        remise = 20
+        transport_ml = 1.5
+
+        grouped = build_poutrelles_ml_by_type(
+            poutrelles, remise, transport_ml
+        )
+        regular = compute_devis(
+            poutrelles,
+            [],
+            0,
+            0,
+            remise,
+            0,
+            0,
+            0,
+            "rendu",
+            "manuel",
+            1,
+            transport_ml,
+            0,
+        )
+        regular_poutrelles_total = round(
+            sum(
+                row["total"]
+                for row in regular["lignes"]
+                if row["type"] in {"113", "135", "ETRIERS"}
+            ),
+            2,
+        )
+
+        self.assertEqual([row["type"] for row in grouped], ["113", "135"])
+        self.assertEqual(grouped[0]["total_ml"], 22.0)
+        self.assertEqual(grouped[0]["total_etriers"], 88)
+        self.assertEqual(grouped[0]["prix_ml_complet"], 27.46)
+        self.assertEqual(grouped[1]["total_ml"], 6.0)
+        self.assertEqual(grouped[1]["total_etriers"], 10)
+        self.assertEqual(
+            round(sum(row["total"] for row in grouped), 2),
+            regular_poutrelles_total,
+        )
 
 
 if __name__ == "__main__":

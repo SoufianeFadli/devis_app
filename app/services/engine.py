@@ -128,6 +128,61 @@ def sort_articles_for_display(
     return sorted(poutrelles, key=poutrelle_key), sorted(hourdis, key=hourdis_key)
 
 
+def build_poutrelles_ml_by_type(
+    poutrelles: List[Dict[str, Any]],
+    remise_poutrelle: float,
+    transport_par_ml: float = 0.0,
+) -> List[Dict[str, Any]]:
+    """Regroupe les poutrelles par type avec un prix ML incluant les étriers.
+
+    Cette présentation reprend exactement les règles de ``compute_devis`` :
+    prix de la poutrelle remisé, transport au ML et étriers remisés. Elle ne
+    modifie pas le calcul général du devis et sert uniquement à sa présentation.
+    """
+    grouped: Dict[str, Dict[str, float]] = {}
+    discount_factor = 1.0 - _flt(remise_poutrelle) / 100.0
+    transport_ml = max(0.0, _flt(transport_par_ml))
+
+    for poutrelle in poutrelles:
+        type_p = str(poutrelle.get("type", "")).strip().upper()
+        longueur = _flt(poutrelle.get("longueur"))
+        nombre = _flt(poutrelle.get("nombre"))
+        etriers_par_cote = _flt(poutrelle.get("etrier"))
+        if type_p not in PRICE_STD_POUTRELLE_ML or longueur <= 0 or nombre <= 0:
+            continue
+
+        item = grouped.setdefault(
+            type_p,
+            {"total_ml": 0.0, "total_etriers": 0.0, "total_ht": 0.0},
+        )
+        total_ml = longueur * nombre
+        total_etriers = nombre * etriers_par_cote * 2.0
+        prix_poutrelle_ml = (
+            PRICE_STD_POUTRELLE_ML[type_p] * discount_factor + transport_ml
+        )
+        prix_etrier = ETRIER_STD_PRICE * discount_factor
+
+        item["total_ml"] += total_ml
+        item["total_etriers"] += total_etriers
+        item["total_ht"] += total_ml * prix_poutrelle_ml + total_etriers * prix_etrier
+
+    order = {type_p: index for index, type_p in enumerate(PRICE_STD_POUTRELLE_ML)}
+    result: List[Dict[str, Any]] = []
+    for type_p, item in sorted(grouped.items(), key=lambda entry: order[entry[0]]):
+        total_ml = item["total_ml"]
+        total_ht = item["total_ht"]
+        result.append(
+            {
+                "type": type_p,
+                "total_ml": round(total_ml, 2),
+                "total_etriers": int(round(item["total_etriers"])),
+                "prix_ml_complet": round(total_ht / total_ml, 4),
+                "total": round(total_ht, 2),
+            }
+        )
+    return result
+
+
 def _compute_poids(
     poutrelles: List[Dict[str, Any]], hourdis: List[Dict[str, Any]]
 ) -> Tuple[float, float, float, float, float]:

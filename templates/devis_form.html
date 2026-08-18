@@ -52,6 +52,34 @@
     .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
     .hint { font-size: 11px; color: #555; }
 
+    .hourdis-preview-status {
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #f3f4f6;
+      color: #4b5563;
+      font-size: 12px;
+    }
+
+    .hourdis-preview-status.error {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    .hourdis-change {
+      background: #ecfdf5;
+    }
+
+    .hourdis-change td {
+      border-color: #a7f3d0;
+    }
+
+    .hourdis-file-title {
+      margin: 12px 0 4px;
+      font-weight: 700;
+      color: #1f2937;
+      font-size: 12px;
+    }
+
     /* ---------- Auto-complétion clients ---------- */
     .client-search-wrapper {
       position: relative;
@@ -345,9 +373,15 @@
               <input type="radio" name="presentation_mode" value="par_niveau">
               Détail par niveau (un niveau par fichier CSV)
             </label>
+            <label>
+              <input type="radio" name="presentation_mode" value="ml_par_type">
+              Poutrelles au ML par type, étriers inclus
+            </label>
           </div>
           <div class="hint" style="margin-top:6px;">
             En détail par niveau, le nom du fichier CSV devient le nom du niveau.
+            Le mode ML regroupe les poutrelles 113, 114, 115, 135 et 157 et intègre
+            les étriers dans leur prix au mètre linéaire.
           </div>
         </div>
 
@@ -356,12 +390,21 @@
           <div class="zone-title">FICHIERS PROGICIEL (CSV)</div>
           <div class="grid2">
             <div class="lbl">Importer les CSV</div>
-            <input class="inp" type="file" name="fichier_progiciel" accept=".csv,text/csv" multiple />
+            <input class="inp" id="fichier_progiciel" type="file" name="fichier_progiciel" accept=".csv,text/csv" multiple />
             <div class="hint">
               Sélectionnez un ou plusieurs fichiers. Leurs quantités et surfaces seront
               réunies dans un seul devis et les articles identiques seront regroupés.
               Si la sélection est vide, le devis sera sans quantités.
             </div>
+          </div>
+
+          <div id="hourdis_correction_zone" class="zone-block hidden" style="margin-top:12px;">
+            <div class="zone-title">VÉRIFICATION ET CORRECTION DES HOURDIS</div>
+            <div class="hint" style="margin-bottom:8px;">
+              Le type détecté reste inchangé dans le CSV. Choisissez le type réel avant de générer le devis.
+            </div>
+            <div id="hourdis_preview_status" class="hourdis-preview-status"></div>
+            <div id="hourdis_preview_content"></div>
           </div>
         </div>
 
@@ -569,6 +612,138 @@
       radioProgiciel.addEventListener("change", refreshModeSaisie);
       radioManuel.addEventListener("change", refreshModeSaisie);
       refreshModeSaisie();
+    })();
+
+    // --- Prévisualisation et correction des hourdis importés ---
+    (function () {
+      const fileInput = document.getElementById("fichier_progiciel");
+      const zone = document.getElementById("hourdis_correction_zone");
+      const statusBox = document.getElementById("hourdis_preview_status");
+      const content = document.getElementById("hourdis_preview_content");
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function formatQuantity(value) {
+        return Number(value || 0).toLocaleString("fr-FR", {
+          maximumFractionDigits: 2
+        });
+      }
+
+      function setChangedState(select) {
+        const row = select.closest("tr");
+        row.classList.toggle("hourdis-change", select.value !== select.dataset.detected);
+      }
+
+      function applyToMatches(sourceSelect, allFiles) {
+        const sourceFile = sourceSelect.dataset.fileIndex;
+        const detected = sourceSelect.dataset.detected;
+        content.querySelectorAll("select.hourdis-correction-select").forEach(select => {
+          const sameFile = select.dataset.fileIndex === sourceFile;
+          if (select.dataset.detected === detected && (allFiles || sameFile)) {
+            select.value = sourceSelect.value;
+            setChangedState(select);
+          }
+        });
+      }
+
+      function renderPreview(data) {
+        const files = data.files || [];
+        const allowedTypes = data.allowed_types || [];
+        const totalRows = files.reduce((total, file) => total + file.rows.length, 0);
+
+        if (!totalRows) {
+          statusBox.textContent = "Aucune ligne d’hourdis détectée dans les fichiers sélectionnés.";
+          content.innerHTML = "";
+          return;
+        }
+
+        statusBox.textContent = totalRows + " ligne(s) d’hourdis détectée(s). Vérifiez les types avant de continuer.";
+        content.innerHTML = files.map(file => {
+          if (!file.rows.length) return "";
+          const rows = file.rows.map(row => {
+            const detectedOption = allowedTypes.includes(row.detected_type)
+              ? ""
+              : `<option value="${escapeHtml(row.detected_type)}" selected>${escapeHtml(row.detected_type)} (détecté — non tarifé)</option>`;
+            const options = detectedOption + allowedTypes.map(type =>
+              `<option value="${escapeHtml(type)}" ${type === row.detected_type ? "selected" : ""}>${escapeHtml(type)}</option>`
+            ).join("");
+            return `
+              <tr>
+                <td>
+                  <input type="hidden" name="hourdis_override_key" value="${escapeHtml(row.key)}">
+                  <strong>${escapeHtml(row.detected_type)}</strong>
+                </td>
+                <td>${formatQuantity(row.nombre)}</td>
+                <td>
+                  <select class="inp hourdis-correction-select"
+                          name="hourdis_override_type"
+                          data-file-index="${file.file_index}"
+                          data-detected="${escapeHtml(row.detected_type)}">
+                    ${options}
+                  </select>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-small apply-level">Même type dans ce niveau</button>
+                  <button type="button" class="btn btn-small apply-all">Même type partout</button>
+                </td>
+              </tr>`;
+          }).join("");
+
+          return `
+            <div class="hourdis-file-title">${escapeHtml(file.level_name)} — ${escapeHtml(file.filename)}</div>
+            <table class="table-like">
+              <thead><tr><th>Type détecté</th><th>Quantité</th><th>Type retenu</th><th>Appliquer</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>`;
+        }).join("");
+
+        content.querySelectorAll("select.hourdis-correction-select").forEach(select => {
+          select.addEventListener("change", () => setChangedState(select));
+        });
+        content.querySelectorAll("button.apply-level").forEach(button => {
+          button.addEventListener("click", () =>
+            applyToMatches(button.closest("tr").querySelector("select"), false)
+          );
+        });
+        content.querySelectorAll("button.apply-all").forEach(button => {
+          button.addEventListener("click", () =>
+            applyToMatches(button.closest("tr").querySelector("select"), true)
+          );
+        });
+      }
+
+      async function loadPreview() {
+        content.innerHTML = "";
+        statusBox.classList.remove("error");
+        if (!fileInput.files.length) {
+          zone.classList.add("hidden");
+          return;
+        }
+
+        zone.classList.remove("hidden");
+        statusBox.textContent = "Analyse des fichiers CSV en cours…";
+        const body = new FormData();
+        Array.from(fileInput.files).forEach(file => body.append("fichiers", file));
+
+        try {
+          const response = await fetch("/api/csv/hourdis-preview", {method: "POST", body});
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "Lecture des CSV impossible.");
+          renderPreview(data);
+        } catch (error) {
+          statusBox.classList.add("error");
+          statusBox.textContent = error.message || "Erreur pendant l’analyse des fichiers CSV.";
+        }
+      }
+
+      fileInput.addEventListener("change", loadPreview);
     })();
 
     // --- Ajout dynamique des lignes de poutrelles ---

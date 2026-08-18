@@ -17,10 +17,17 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from app.services.parser_progiciel import parse_progiciel_csv
 from app.services.engine import (
+    PRICE_STD_POUTRELLE_ML,
+    build_poutrelles_ml_by_type,
     compute_devis,
     group_identical_articles,
     simulate_transport,
     sort_articles_for_display,
+)
+from app.services.hourdis_corrections import (
+    HOURDIS_TYPES,
+    apply_hourdis_overrides,
+    build_hourdis_overrides,
 )
 from pydantic import BaseModel
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -606,6 +613,56 @@ def devis_form(request: Request):
     )
 
 
+@app.post("/api/csv/hourdis-preview")
+async def preview_csv_hourdis(
+    fichiers: Optional[List[UploadFile]] = File(None),
+):
+    """Analyse les CSV sélectionnés pour permettre la correction des hourdis."""
+    preview_files: List[Dict[str, Any]] = []
+
+    for file_index, fichier in enumerate(
+        f for f in (fichiers or []) if f.filename
+    ):
+        tmp_path: Optional[Path] = None
+        filename = Path(fichier.filename or "fichier.csv").name
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                shutil.copyfileobj(fichier.file, tmp)
+                tmp_path = Path(tmp.name)
+
+            parsed = parse_progiciel_csv(tmp_path)
+            rows = [
+                {
+                    "key": f"{file_index}:{row_index}",
+                    "row_index": row_index,
+                    "detected_type": str(row.get("type", "")).strip().upper(),
+                    "nombre": float(row.get("nombre", 0.0) or 0.0),
+                }
+                for row_index, row in enumerate(parsed.get("hourdis", []))
+            ]
+            preview_files.append(
+                {
+                    "file_index": file_index,
+                    "filename": filename,
+                    "level_name": Path(filename).stem.strip().upper() or "NIVEAU",
+                    "rows": rows,
+                }
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Impossible de lire le fichier CSV '{filename}': {e}",
+            ) from e
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+            await fichier.close()
+
+    return JSONResponse(
+        {"files": preview_files, "allowed_types": list(HOURDIS_TYPES)}
+    )
+
+
 @app.post("/generate")
 async def generate_devis(
     request: Request,
@@ -641,6 +698,8 @@ async def generate_devis(
     manual_pout_nombre: Optional[List[float]] = Form(None),
     manual_hourdis_type: Optional[List[str]] = Form(None),
     manual_hourdis_nombre: Optional[List[float]] = Form(None),
+    hourdis_override_key: Optional[List[str]] = Form(None),
+    hourdis_override_type: Optional[List[str]] = Form(None),
     surface_ct_manual: float = Form(0.0),
     nb_treillis_manual: float = Form(0.0),
     # Un ou plusieurs fichiers progiciel
@@ -667,6 +726,7 @@ async def generate_devis(
     surface_ts: float = 0.0
     source_filenames: List[str] = []
     niveaux_sources: List[Dict[str, Any]] = []
+    hourdis_corrections: List[Dict[str, Any]] = []
 
     # Normaliser les listes manuelles pour éviter None
     manual_pout_type = manual_pout_type or []
@@ -675,6 +735,9 @@ async def generate_devis(
     manual_pout_nombre = manual_pout_nombre or []
     manual_hourdis_type = manual_hourdis_type or []
     manual_hourdis_nombre = manual_hourdis_nombre or []
+    hourdis_overrides = build_hourdis_overrides(
+        hourdis_override_key or [], hourdis_override_type or []
+    )
 
     # Si la réf devis est vide (ou non envoyée), on génère automatiquement
     if not ref_devis or not ref_devis.strip():
@@ -684,7 +747,7 @@ async def generate_devis(
     if saisie_mode == "progiciel":
         fichiers = [f for f in (fichier_progiciel or []) if f.filename]
         if fichiers:
-            for fichier in fichiers:
+            for file_index, fichier in enumerate(fichiers):
                 tmp_path: Optional[Path] = None
                 filename = Path(fichier.filename or "fichier.csv").name
                 try:
@@ -695,6 +758,13 @@ async def generate_devis(
                     parsed = parse_progiciel_csv(tmp_path)
                     fichier_poutrelles = parsed.get("poutrelles", [])
                     fichier_hourdis = parsed.get("hourdis", [])
+                    fichier_hourdis, fichier_corrections = apply_hourdis_overrides(
+                        fichier_hourdis,
+                        file_index,
+                        hourdis_overrides,
+                        filename,
+                    )
+                    hourdis_corrections.extend(fichier_corrections)
                     fichier_surface_ct = float(parsed.get("surface_ct", 0.0) or 0.0)
                     fichier_surface_ts = float(parsed.get("surface_ts", 0.0) or 0.0)
 
@@ -851,11 +921,13 @@ async def generate_devis(
     )
 
     # === 4) PRÉSENTATION DÉTAILLÉE PAR NIVEAU ================================
-    if presentation_mode not in {"regroupe", "par_niveau"}:
+    if presentation_mode not in {"regroupe", "par_niveau", "ml_par_type"}:
         presentation_mode = "regroupe"
 
     niveaux_calc: List[Dict[str, Any]] = []
     lignes_globales: List[Dict[str, Any]] = []
+    lignes_poutrelles_ml: List[Dict[str, Any]] = []
+    lignes_autres_ml: List[Dict[str, Any]] = []
 
     if presentation_mode == "par_niveau" and niveaux_sources:
         tr_ml_global = float(data_calc.get("transport_par_ml_brut", 0.0) or 0.0)
@@ -907,6 +979,41 @@ async def generate_devis(
         if niveaux_calc and ecart_arrondi:
             niveaux_calc[-1]["subtotal_ht"] = round(
                 float(niveaux_calc[-1]["subtotal_ht"]) + ecart_arrondi, 2
+            )
+
+    if presentation_mode == "ml_par_type":
+        lignes_poutrelles_ml = build_poutrelles_ml_by_type(
+            poutrelles,
+            remise_poutrelle,
+            float(data_calc.get("transport_par_ml_brut", 0.0) or 0.0),
+        )
+        lignes_autres_ml = [
+            ligne
+            for ligne in data_calc.get("lignes", [])
+            if ligne.get("type") not in PRICE_STD_POUTRELLE_ML
+            and ligne.get("type") != "ETRIERS"
+        ]
+
+        # Affecte les éventuels centimes d'arrondi à la dernière famille pour
+        # que la somme des lignes présentées reste exactement égale au total HT.
+        cible_poutrelles = round(
+            float(data_calc.get("total_ht", 0.0))
+            - sum(float(ligne.get("total", 0.0)) for ligne in lignes_autres_ml),
+            2,
+        )
+        total_poutrelles_affiche = round(
+            sum(float(ligne["total"]) for ligne in lignes_poutrelles_ml), 2
+        )
+        ecart_ml = round(cible_poutrelles - total_poutrelles_affiche, 2)
+        if lignes_poutrelles_ml and ecart_ml:
+            derniere_ligne = lignes_poutrelles_ml[-1]
+            derniere_ligne["total"] = round(
+                float(derniere_ligne["total"]) + ecart_ml, 2
+            )
+            derniere_ligne["prix_ml_complet"] = round(
+                float(derniere_ligne["total"])
+                / float(derniere_ligne["total_ml"]),
+                4,
             )
 
     print(
@@ -970,8 +1077,11 @@ async def generate_devis(
         "presentation_mode": presentation_mode,
         "niveaux_calc": niveaux_calc,
         "lignes_globales": lignes_globales,
+        "lignes_poutrelles_ml": lignes_poutrelles_ml,
+        "lignes_autres_ml": lignes_autres_ml,
         "source_filenames": source_filenames,
         "nombre_fichiers": len(source_filenames),
+        "hourdis_corrections": hourdis_corrections,
         "surface_ct": surface_ct,
         "surface_ts": surface_ts,
         "logo_data_uri": LOGO_DATA_URI,
