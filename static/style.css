@@ -798,3 +798,267 @@ table.devis td.strong {
 .user-bar-right .user-bar-link:hover {
   text-decoration: underline;
 }
+
+/* =========================================================
+   ÉCRANS MOBILES / APPLICATION ANDROID
+   Les règles restent limitées à l'écran et ne touchent pas le PDF.
+========================================================= */
+
+.client-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media screen and (max-width: 800px) {
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  body,
+  .app-body {
+    font-size: 15px;
+    background: #ffffff;
+  }
+
+  .app-shell {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .page,
+  .page.devis-page {
+    width: 100%;
+    max-width: none;
+    min-height: 100svh;
+    margin: 0;
+    padding: max(12px, env(safe-area-inset-top)) 12px
+             max(28px, env(safe-area-inset-bottom));
+    border-radius: 0;
+    box-shadow: none;
+    overflow-x: hidden;
+  }
+
+  .user-bar {
+    max-width: none;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    gap: 12px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  .user-bar-left {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .header {
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .societe {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .coord {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .logo-box {
+    width: 74px;
+    height: 54px;
+    border-radius: 7px;
+  }
+
+  .title {
+    margin: 8px 0 16px;
+    font-size: 17px;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+  }
+
+  .top-grid,
+  .grid2 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .card-title {
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+
+  .grid2 > .lbl {
+    margin-top: 7px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .inp {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-size: 16px;
+  }
+
+  input[type="file"].inp {
+    height: auto;
+    min-height: 54px;
+    padding: 9px;
+  }
+
+  .client-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .client-results {
+    max-height: 45vh;
+    font-size: 14px;
+  }
+
+  .client-result-item {
+    min-height: 48px;
+    padding: 9px 10px;
+    align-items: flex-start;
+  }
+
+  .client-result-name {
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .radio-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .radio-group label {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 11px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 9px;
+    background: #ffffff;
+    line-height: 1.35;
+  }
+
+  .radio-group input {
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    flex: 0 0 auto;
+  }
+
+  .zone-block {
+    padding: 11px;
+    border-radius: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-like,
+  table.devis,
+  .devis-table {
+    min-width: 640px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-like th,
+  .table-like td,
+  .table-like input.inp {
+    font-size: 13px;
+  }
+
+  .btn,
+  .btn-small {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+
+  .client-search-row .btn,
+  .form-actions .btn,
+  .actions-top .btn {
+    width: 100%;
+  }
+
+  .form-actions,
+  .actions-top {
+    width: 100%;
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+
+  .actions-top {
+    margin: 10px 0;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: calc(100svh - 24px);
+    padding: 18px 16px;
+    overflow-y: auto;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
+
+  .info-grid,
+  .conditions-signature,
+  .header-pro {
+    flex-direction: column;
+  }
+
+  .header-pro .header-left {
+    flex-basis: auto;
+  }
+
+  .header-pro .header-right {
+    text-align: left;
+  }
+
+  .totaux,
+  .totaux-card {
+    width: 100%;
+    max-width: none;
+  }
+}

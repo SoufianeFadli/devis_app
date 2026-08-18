@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="Devis SBBM">
 
   <title>Devis SBBM - Formulaire</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=3">
   <link rel="icon" href="/static/favicon.ico">
 
   <style>
@@ -29,12 +29,6 @@
       background: #fff;
     }
     .zone-title { font-weight: bold; margin-bottom: 8px; }
-
-    .grid2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px 10px;
-    }
 
     .table-like {
       width: 100%;
@@ -213,7 +207,7 @@
             <!-- Recherche client (code ou nom) -->
             <div class="lbl">Client :</div>
             <div class="client-search-wrapper">
-              <div style="display:flex; align-items:center; gap:8px;">
+              <div class="client-search-row">
                 <input class="inp"
                        type="text"
                        id="client_search"
@@ -525,7 +519,7 @@
       </div>
 
       <!-- ================== Boutons ================== -->
-      <div style="display:flex; gap:10px; margin-top:14px;">
+      <div class="form-actions">
         <button class="btn" type="submit">Générer le devis</button>
         <a class="btn btn-secondary" href="/devis/form">Réinitialiser</a>
       </div>

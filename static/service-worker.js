@@ -1,6 +1,6 @@
-const CACHE_NAME = "devis-sbbm-static-v2";
+const CACHE_NAME = "devis-sbbm-static-v3";
 const URLS_TO_CACHE = [
-  "/static/style.css",
+  "/static/style.css?v=3",
   "/static/logo_sbbm.jpg",
   "/static/icon-192.png",
   "/static/icon-512.png"
