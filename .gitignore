@@ -17,3 +17,15 @@ uploads/
 
 # Mac OS
 .DS_Store
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/**/build/
+android/*.jks
+android/*.keystore
+android/app/*.jks
+android/app/*.keystore
+
+# APK local de test (reproductible avec Gradle)
+output/android/*.apk

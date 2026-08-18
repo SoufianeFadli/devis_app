@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Devis SBBM</string>
+    <string name="launch_url" translatable="false">https://devis-sbbm-c0al.onrender.com/</string>
+    <string name="asset_statements" translatable="false">[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"https://devis-sbbm-c0al.onrender.com"}}]</string>
+</resources>

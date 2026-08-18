@@ -1,8 +1,5 @@
-const CACHE_NAME = "devis-sbbm-v1";
+const CACHE_NAME = "devis-sbbm-static-v2";
 const URLS_TO_CACHE = [
-  "/",
-  "/devis/form",
-  "/devis/historique",
   "/static/style.css",
   "/static/logo_sbbm.jpg",
   "/static/icon-192.png",
@@ -31,24 +28,29 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Fetch : stratégie "network first puis cache"
+// Ne jamais mettre en cache les pages authentifiées, devis ou données clients.
+// Seules les ressources statiques publiques peuvent être servies hors connexion.
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") {
+  const url = new URL(request.url);
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    !url.pathname.startsWith("/static/")
+  ) {
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // on met en cache la réponse
-        const cloned = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (response.ok) {
+          const cloned = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+        }
         return response;
-      })
-      .catch(() => {
-        // si offline → on sert la version cache si dispo
-        return caches.match(request);
-      })
+      });
+    })
   );
 });

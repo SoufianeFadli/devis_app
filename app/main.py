@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
-import hashlib
 import os
+import secrets
 import sqlite3 
 from datetime import date
 from io import BytesIO
@@ -29,6 +29,12 @@ from app.services.hourdis_corrections import (
     apply_hourdis_overrides,
     build_hourdis_overrides,
 )
+from app.services.security import (
+    create_session_token,
+    hash_password,
+    read_session_token,
+    verify_password,
+)
 from pydantic import BaseModel
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from import_clients import import_clients
@@ -47,7 +53,16 @@ templates = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"])
 )
-SECRET_KEY = os.getenv("SECRET_KEY", "local-development-secret")
+SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)
+SESSION_COOKIE_NAME = "sbbm_session"
+SESSION_MAX_AGE = 12 * 60 * 60
+ANDROID_PACKAGE_NAME = "ma.sbbm.devis"
+# Certificat public de l'APK de test. Les empreintes Play Signing peuvent etre
+# ajoutees dans ANDROID_CERT_SHA256 (separees par des virgules) sans modifier le code.
+ANDROID_DEBUG_CERT_SHA256 = (
+    "D6:3A:38:8F:4C:D2:BC:56:B0:DE:84:41:3E:F1:42:7E:9E:6E:83:31:"
+    "EF:4A:CB:C0:11:0F:C1:67:3C:DE:D9:5F"
+)
 
 # --- Initialisation base SQLite (table users) ---
 
@@ -70,13 +85,17 @@ def init_db_users():
     )
 
     # Données de base (commerciaux)
-    seed_users = [
+    seed_users_plain = [
         ("ga",              "1234",     "GA",  "Commercial GA"),
         ("FIKRI HAMMADI",   "SBBM FH",  "FH",  "Commercial FH"),
         ("ELOMARI AHMED",   "SBBM EA",  "EA",  "Commercial EA"),
         ("CHARROUK ABDELKARIM", "SBBM CH", "CH", "Commercial CH"),
         ("BOUALI",          "SBBM BA",  "BA",  "Commercial BA"),
         ("DGA",             "SBBM DGA", "DGA", "Commercial DGA"),
+    ]
+    seed_users = [
+        (username, hash_password(password), code, name)
+        for username, password, code, name in seed_users_plain
     ]
 
     # INSERT OR IGNORE → ne double pas les lignes si elles existent
@@ -92,14 +111,6 @@ def init_db_users():
     conn.close()
 
 
-# Appel au démarrage du module (local + Render)
-init_db_users()
-
-def hash_password(pwd: str) -> str:
-    """Retourne le hash SHA256 d'un mot de passe en texte clair."""
-    return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
-
-
 def authenticate_user(username: str, password: str):
     """Vérifie username / password, retourne le row user ou None."""
     conn = sqlite3.connect(DB_PATH)
@@ -107,20 +118,32 @@ def authenticate_user(username: str, password: str):
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE username = ?", (username,))
     row = cur.fetchone()
-    conn.close()
-
     if not row:
+        conn.close()
         return None
 
-    if row["password_hash"] != hash_password(password):
+    password_is_valid, needs_upgrade = verify_password(
+        password, row["password_hash"]
+    )
+    if not password_is_valid:
+        conn.close()
         return None
+
+    if needs_upgrade:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (hash_password(password), row["id"]),
+        )
+        conn.commit()
+    conn.close()
 
     return row
 
 
 def get_current_user(request: Request):
-    """Récupère l'utilisateur courant à partir du cookie session_username."""
-    username = request.cookies.get("session_username")
+    """Récupère l'utilisateur depuis une session signée et non falsifiable."""
+    token = request.cookies.get(SESSION_COOKIE_NAME, "")
+    username = read_session_token(token, SECRET_KEY)
     if not username:
         return None
 
@@ -143,6 +166,10 @@ def get_current_user(request: Request):
         "code_commercial": row["code_commercial"],
         "nom": row["nom"],
     }
+
+
+# Appel au démarrage du module (local + Render)
+init_db_users()
 
 
 # --- Initialisation table clients + import CSV si nécessaire ---
@@ -430,6 +457,30 @@ app = FastAPI()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+
+@app.middleware("http")
+async def require_authenticated_session(request: Request, call_next):
+    """Protège toutes les données métier, y compris les endpoints AJAX."""
+    path = request.url.path
+    is_public = (
+        path in {"/login", "/health", "/.well-known/assetlinks.json"}
+        or path.startswith("/static/")
+    )
+    if is_public:
+        return await call_next(request)
+
+    user = get_current_user(request)
+    if user:
+        request.state.user = user
+        return await call_next(request)
+
+    if path.startswith("/api/") or path == "/simulate-transport":
+        return JSONResponse(
+            {"detail": "Session expirée. Veuillez vous reconnecter."},
+            status_code=401,
+        )
+    return RedirectResponse(url="/login", status_code=303)
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     return templates.TemplateResponse(
@@ -447,32 +498,12 @@ def login_submit(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    """
-    Authentification SIMPLE :
-    - on compare username ET password_hash exactement comme en base.
-    """
+    """Authentifie l'utilisateur puis crée une session signée de 12 heures."""
 
     username_input = (username or "").strip()
     password_input = (password or "").strip()
 
-    # Petit log dans le terminal pour debug
-    print("Tentative login →", repr(username_input), repr(password_input))
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    # 🔹 Requête ultra simple : username + password_hash
-    cur.execute(
-        """
-        SELECT id, username, password_hash, code_commercial, nom
-        FROM users
-        WHERE username = ? AND password_hash = ?
-        """,
-        (username_input, password_input),
-    )
-    row = cur.fetchone()
-    conn.close()
+    row = authenticate_user(username_input, password_input)
 
     if not row:
         print("⚠️ Login échoué")
@@ -487,11 +518,15 @@ def login_submit(
 
     print("✅ Login OK pour", row["username"], "code_commercial:", row["code_commercial"])
 
-    # 🔹 Redirection vers le formulaire AVEC cookies
     resp = RedirectResponse(url="/devis/form", status_code=status.HTTP_303_SEE_OTHER)
-    resp.set_cookie("user_code_commercial", row["code_commercial"], httponly=True)
-    resp.set_cookie("user_nom", row["nom"], httponly=False)
-    resp.set_cookie("user_username", row["username"], httponly=False)
+    resp.set_cookie(
+        SESSION_COOKIE_NAME,
+        create_session_token(row["username"], SECRET_KEY, SESSION_MAX_AGE),
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        secure=request.url.scheme == "https" or bool(os.getenv("RENDER")),
+        samesite="lax",
+    )
     return resp
 
 
@@ -499,10 +534,7 @@ def login_submit(
 def logout():
     """Déconnexion : on supprime les cookies et on renvoie vers /login."""
     resp = RedirectResponse(url="/login", status_code=302)
-    resp.delete_cookie("user_id")
-    resp.delete_cookie("user_username")
-    resp.delete_cookie("user_code_commercial")
-    resp.delete_cookie("user_nom")
+    resp.delete_cookie(SESSION_COOKIE_NAME)
     return resp
 
 @app.post("/clients/new")
@@ -582,6 +614,28 @@ def health_check():
         raise HTTPException(status_code=503, detail="Base SQLite indisponible") from e
     return {"status": "ok"}
 
+
+@app.get("/.well-known/assetlinks.json")
+def android_asset_links():
+    """Associe le domaine web a l'APK de test et aux signatures Play futures."""
+    fingerprints = [ANDROID_DEBUG_CERT_SHA256]
+    configured = os.getenv("ANDROID_CERT_SHA256", "")
+    fingerprints.extend(
+        fingerprint.strip().upper()
+        for fingerprint in configured.split(",")
+        if fingerprint.strip()
+    )
+    return [
+        {
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": ANDROID_PACKAGE_NAME,
+                "sha256_cert_fingerprints": list(dict.fromkeys(fingerprints)),
+            },
+        }
+    ]
+
 @app.get("/devis/form", response_class=HTMLResponse)
 def devis_form(request: Request):
     """Affiche le formulaire de saisie."""
@@ -594,10 +648,7 @@ def devis_form(request: Request):
         print("⚠️ Erreur get_next_ref_devis:", e)
         next_ref = ""
 
-    # 🔹 Infos de l’utilisateur connecté (cookies mis au login)
-    user_code_commercial = request.cookies.get("user_code_commercial", "")
-    user_nom = request.cookies.get("user_nom", "")
-    user_username = request.cookies.get("user_username", "")
+    user = request.state.user
 
     return templates.TemplateResponse(
         "devis_form.html",
@@ -606,9 +657,9 @@ def devis_form(request: Request):
             "today": today_str,
             "liste_commerciaux": COMMERCIAUX,
             "next_ref_devis": next_ref,
-            "user_code_commercial": user_code_commercial,
-            "user_nom": user_nom,
-            "user_username": user_username,
+            "user_code_commercial": user["code_commercial"],
+            "user_nom": user["nom"],
+            "user_username": user["username"],
         },
     )
 
@@ -711,10 +762,10 @@ async def generate_devis(
     """
     global LAST_POUTRELLES, LAST_HOURDIS, LAST_SURFACE_CT, LAST_SURFACE_TS
 
-    # 🟢 Infos utilisateur depuis les cookies (mis au login)
-    user_code_commercial = request.cookies.get("user_code_commercial", "")
-    user_nom = request.cookies.get("user_nom", "")
-    user_username = request.cookies.get("user_username", "")
+    user = request.state.user
+    user_code_commercial = user["code_commercial"]
+    user_nom = user["nom"]
+    user_username = user["username"]
 
     # Si un code commercial est dans le cookie, on force cette valeur
     if user_code_commercial:
