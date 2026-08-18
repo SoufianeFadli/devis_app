@@ -4,6 +4,8 @@ Cette application est une Trusted Web Activity (TWA) qui ouvre la version web
 securisee de Devis SBBM en plein ecran. La version web reste disponible et les
 deux versions utilisent le meme serveur et les memes donnees.
 
+Version Android actuelle : `1.0.1` (`versionCode 2`).
+
 ## Compiler l'APK de test
 
 1. Ouvrir le dossier `android` dans Android Studio, ou lancer `./gradlew assembleDebug`.

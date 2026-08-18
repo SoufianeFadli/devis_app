@@ -27,5 +27,5 @@ android/*.keystore
 android/app/*.jks
 android/app/*.keystore
 
-# APK local de test (reproductible avec Gradle)
-output/android/*.apk
+# Artifacts Android locaux (reproductibles avec Gradle)
+output/
