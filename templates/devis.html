@@ -99,15 +99,6 @@
           <div class="row">
             <div class="lbl">Réf devis</div><div class="val">{{ ref_devis }}</div>
           </div>
-          {% if nombre_fichiers %}
-          <div class="row">
-            <div class="lbl">Fichiers CSV</div>
-            <div class="val">
-              {{ nombre_fichiers }} fichier{% if nombre_fichiers > 1 %}s{% endif %} :
-              {{ source_filenames|join(', ') }}
-            </div>
-          </div>
-          {% endif %}
           <div class="row">
             <div class="lbl">Mode livraison</div><div class="val">{{ mode_livraison }}</div>
           </div>
